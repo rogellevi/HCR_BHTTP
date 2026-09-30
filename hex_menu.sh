@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ═══════════════════════════════════════════════════════════════
-#  MANAGER - MENÚ DE GESTIÓN
+#  HEX MANAGER - MENÚ DE GESTIÓN
 #  Repositorio: https://github.com/rogellevi/HCR_BHTTP
 # ═══════════════════════════════════════════════════════════════
 
@@ -57,7 +57,7 @@ ui_titulo() { printf "${ACC}║${NC}                     ${WHITE}${BOLD}%s${NC} 
 ui_opcion() { printf "     ${CYAN}[${NC}${YELLOW}$1${NC}${CYAN}]${NC}  $2\n"; }
 
 menu_principal() {
-    clear; ui_top; ui_titulo "MENÚ DE GESTIÓN"; ui_sep
+    clear; ui_top; ui_titulo "HEX MANAGER"; ui_sep
     
     bhttp_state=$(systemctl is-active $BHTTP_UNIT 2>/dev/null || echo "inactivo")
     hcr_state=$(systemctl is-active $HCR_UNIT 2>/dev/null || echo "inactivo")
