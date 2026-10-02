@@ -16,6 +16,8 @@ HCR_PORTS_CONF="/etc/hex/hcr_ports.conf"
 UDPGW_PORTS_CONF="/etc/hex/udpgw_ports.conf"
 CLEANUP_SCRIPT="/usr/local/bin/hex_cleanup.sh"
 CLEANUP_LOG="/var/log/hex-cleanup.log"
+WEBPANEL_SERVICE="hex-webpanel.service"
+WEBPANEL_PORT=9000
 
 mkdir -p /etc/hex
 touch "$USER_DB" && chmod 600 "$USER_DB"
@@ -79,22 +81,28 @@ menu_principal() {
     udpgw_st=$(get_svc_status "udpgw" "$UDPGW_PORTS_CONF")
     [ "$cron_active" -gt 0 ] && cleanup_status="${GREEN}● ACTIVO${NC}" || cleanup_status="${RED}● INACTIVO${NC}"
     
+    # Estado del Panel Web
+    webpanel_state=$(systemctl is-active $WEBPANEL_SERVICE 2>/dev/null || echo "inactivo")
+    [ "$webpanel_state" = "active" ] && webpanel_status="${GREEN}● ACTIVO${NC}" || webpanel_status="${RED}● INACTIVO${NC}"
+    
     ui_fila ""
     ui_fila "  ${CYAN}BHTTP${NC}     - $bhttp_st"
     ui_fila "  ${CYAN}HCR${NC}       - $hcr_st"
     ui_fila "  ${CYAN}UDPGW${NC}     - $udpgw_st"
+    ui_fila "  ${CYAN}WEB PANEL${NC} - Puerto $WEBPANEL_PORT     $webpanel_status"
     ui_fila "  ${CYAN}LIMPIADOR${NC} - Diario 03:00       $cleanup_status"
     ui_fila ""; ui_sep
     
     ui_opcion "1" "Gestionar BHTTP"
     ui_opcion "2" "Gestionar HCR"
     ui_opcion "3" "Gestionar UDPGW"
-    ui_opcion "4" "Agregar usuario"
-    ui_opcion "5" "Eliminar usuario"
-    ui_opcion "6" "Listar usuarios activos"
-    ui_opcion "7" "Limpieza automática"
-    ui_opcion "8" "Ver logs"
-    ui_opcion "9" "Desinstalar"
+    ui_opcion "4" "Gestionar Panel Web"
+    ui_opcion "5" "Agregar usuario"
+    ui_opcion "6" "Eliminar usuario"
+    ui_opcion "7" "Listar usuarios activos"
+    ui_opcion "8" "Limpieza automática"
+    ui_opcion "9" "Ver logs"
+    ui_opcion "10" "Desinstalar"
     ui_opcion "0" "Salir"
     
     ui_bot; echo ""
@@ -104,8 +112,9 @@ menu_principal() {
         1) menu_generico "bhttp" "BHTTP" "$BHTTP_PORTS_CONF" "tcp" ;;
         2) menu_generico "hcr" "HCR" "$HCR_PORTS_CONF" "tcp" ;;
         3) menu_generico "udpgw" "UDPGW" "$UDPGW_PORTS_CONF" "udp" ;;
-        4) agregar_usuario ;; 5) eliminar_usuario ;; 6) listar_usuarios ;;
-        7) gestionar_limpieza ;; 8) ver_logs ;; 9) desinstalar ;; 0) exit 0 ;;
+        4) gestionar_webpanel ;;
+        5) agregar_usuario ;; 6) eliminar_usuario ;; 7) listar_usuarios ;;
+        8) gestionar_limpieza ;; 9) ver_logs ;; 10) desinstalar ;; 0) exit 0 ;;
         *) echo -e "  ${RED}✗ Opción inválida${NC}"; pause_return; menu_principal ;;
     esac
 }
@@ -357,6 +366,86 @@ ver_logs() {
     menu_principal
 }
 
+gestionar_webpanel() {
+    while true; do
+        clear; ui_top; ui_titulo "GESTIÓN PANEL WEB"; ui_sep
+        
+        webpanel_state=$(systemctl is-active $WEBPANEL_SERVICE 2>/dev/null || echo "inactivo")
+        [ "$webpanel_state" = "active" ] && webpanel_status="${GREEN}● ACTIVO${NC}" || webpanel_status="${RED}● INACTIVO${NC}"
+        
+        ui_fila "  Estado: $webpanel_status  │  Puerto: ${YELLOW}$WEBPANEL_PORT${NC}"
+        ui_fila "  URL: ${CYAN}http://$(hostname -I | awk '{print $1}'):$WEBPANEL_PORT${NC}"
+        ui_sep
+        ui_fila ""
+        
+        ui_opcion "1" "Iniciar Panel Web"
+        ui_opcion "2" "Detener Panel Web"
+        ui_opcion "3" "Reiniciar Panel Web"
+        ui_opcion "4" "Ver estado detallado"
+        ui_opcion "5" "Cambiar contraseña"
+        ui_opcion "6" "Ver logs del panel"
+        ui_opcion "0" "Atrás"
+        
+        ui_bot
+        echo ""
+        echo -ne "  ${CYAN}►${NC} Selecciona opción: "; read -r opt
+        
+        case "$opt" in
+            1)
+                systemctl start $WEBPANEL_SERVICE
+                sleep 1
+                if systemctl is-active --quiet $WEBPANEL_SERVICE; then
+                    echo -e "  ${GREEN}✓ Panel Web iniciado${NC}"
+                else
+                    echo -e "  ${RED}✗ Error al iniciar${NC}"
+                fi
+                pause_return
+                ;;
+            2)
+                systemctl stop $WEBPANEL_SERVICE
+                echo -e "  ${GREEN}✓ Panel Web detenido${NC}"
+                pause_return
+                ;;
+            3)
+                systemctl restart $WEBPANEL_SERVICE
+                echo -e "  ${GREEN}✓ Panel Web reiniciado${NC}"
+                pause_return
+                ;;
+            4)
+                echo ""
+                systemctl status $WEBPANEL_SERVICE --no-pager
+                pause_return
+                ;;
+            5)
+                clear; ui_top; ui_titulo "CAMBIAR CONTRASEÑA"; ui_sep; ui_fila ""
+                echo -ne "  ${WHITE}Nueva contraseña:${NC} "; read -rs new_pass; echo ""
+                if [ -z "$new_pass" ]; then
+                    echo -e "  ${RED}✗ La contraseña no puede estar vacía${NC}"
+                    pause_return
+                    continue
+                fi
+                if [ -f "/opt/hex-webpanel/app.py" ]; then
+                    sed -i "s/ADMIN_PASSWORD = .*/ADMIN_PASSWORD = \"$new_pass\"/" /opt/hex-webpanel/app.py
+                    systemctl restart $WEBPANEL_SERVICE
+                    echo -e "  ${GREEN}✓ Contraseña actualizada${NC}"
+                    echo -e "  ${YELLOW}Reinicia sesión en el panel para aplicar cambios${NC}"
+                else
+                    echo -e "  ${RED}✗ No se encontró el archivo del panel${NC}"
+                fi
+                pause_return
+                ;;
+            6)
+                echo ""
+                journalctl -u $WEBPANEL_SERVICE -n 50 --no-pager
+                pause_return
+                ;;
+            0) break ;;
+            *) echo -e "  ${RED}✗ Opción inválida${NC}"; pause_return ;;
+        esac
+    done
+    menu_principal
+}
+
 desinstalar() {
     clear; ui_top; ui_titulo "DESINSTALAR"; ui_sep; ui_fila ""; ui_fila "  ${YELLOW}⚠${NC}  Estás a punto de desinstalar"; ui_fila ""; ui_sep
     echo ""; echo -ne "  ${RED}✗ Escriba${NC} ${YELLOW}${BOLD}CONFIRMAR${NC} ${RED}para continuar:${NC} "; read -r confirm
@@ -373,6 +462,12 @@ desinstalar() {
         rm -rf /opt/bhttp /opt/hcr /opt/udpgw /etc/bhttp /etc/hcr /etc/hex
         rm -f /usr/local/bin/hex_menu /usr/bin/hex_menu /usr/local/bin/hex_cleanup.sh /var/log/hex-cleanup.log
         rm -f /etc/hex/bhttp_ports.conf /etc/hex/hcr_ports.conf /etc/hex/udpgw_ports.conf
+
+echo -e "  ${CYAN}Eliminando Panel Web...${NC}"
+systemctl stop hex-webpanel.service 2>/dev/null || true
+systemctl disable hex-webpanel.service 2>/dev/null || true
+rm -f /etc/systemd/system/hex-webpanel.service
+rm -rf /opt/hex-webpanel
         
         echo -e "  ${CYAN}Eliminando usuarios hexusers...${NC}"
         getent group "$USER_GROUP" >/dev/null 2>&1 && { for user in $(getent group "$USER_GROUP" | cut -d: -f4 | tr ',' '\n'); do userdel -r "$user" 2>/dev/null; done; groupdel "$USER_GROUP" 2>/dev/null; }
