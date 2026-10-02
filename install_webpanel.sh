@@ -3,7 +3,6 @@
 # ═══════════════════════════════════════════════════════════════
 #  HEX WEB PANEL - INSTALADOR AUTOMÁTICO
 #  Repositorio: https://github.com/rogellevi/HCR_BHTTP
-#  Uso: curl -sSL https://raw.githubusercontent.com/rogellevi/HCR_BHTTP/main/install_webpanel.sh | bash
 # ═══════════════════════════════════════════════════════════════
 
 set -o pipefail
@@ -15,7 +14,7 @@ BOLD='\033[1m'; ACC='\033[38;5;44m'
 
 PANEL_DIR="/opt/hex-webpanel"
 PANEL_PORT=9000
-ADMIN_PASS="HexAdmin2026" # ⚠️ CAMBIA ESTA CONTRASEÑA
+ADMIN_PASS="HexAdmin2026"
 
 ui_top() { echo -e "${ACC}╔════════════════════════════════════════════════════════════╗${NC}"; }
 ui_sep() { echo -e "${ACC}╠════════════════════════════════════════════════════════════╣${NC}"; }
@@ -29,7 +28,6 @@ ui_info() { echo -e "     ${CYAN}ℹ${NC} $1${NC}"; }
 verificar_root() {
     if [ "$EUID" -ne 0 ]; then
         echo -e "${RED}✗ Este script requiere permisos de root${NC}"
-        echo -e "${YELLOW}Ejecuta: sudo bash install_webpanel.sh${NC}"
         exit 1
     fi
 }
@@ -62,9 +60,11 @@ crear_app() {
     clear; ui_top; ui_titulo "3/5 CREANDO APLICACIÓN"; ui_sep; ui_fila ""
     ui_info "Creando archivo app.py..."
     
-    cat > "$PANEL_DIR/app.py" <<EOF
+    # IMPORTANTE: Usar <<'EOF_APP' (con comillas simples) para evitar expansión de variables
+    cat > "$PANEL_DIR/app.py" <<'EOF_APP'
 import os
 import subprocess
+import datetime
 from flask import Flask, render_template, request, redirect, url_for, flash
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user
 
@@ -75,7 +75,7 @@ login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
 
-ADMIN_PASSWORD = "$ADMIN_PASS"
+ADMIN_PASSWORD = "HexAdmin2026"
 
 class User(UserMixin):
     def __init__(self, id):
@@ -93,8 +93,16 @@ def run_cmd(cmd):
         return False, e.stderr
 
 def get_service_status(svc, port):
-    result, _ = run_cmd(f"systemctl is-active {svc}@{port}.service 2>/dev/null")
-    return "active" in result
+    try:
+        result = subprocess.run(
+            f"systemctl is-active {svc}@{port}.service",
+            shell=True,
+            capture_output=True,
+            text=True
+        )
+        return result.returncode == 0 and "active" in result.stdout
+    except:
+        return False
 
 def get_users():
     users = []
@@ -141,18 +149,23 @@ def dashboard():
 def add_user():
     user = request.form['username']
     pwd = request.form['password']
-    days = request.form['days']
+    days = int(request.form['days'])
     
-    cmd = f"""
-    useradd -m -s /bin/bash -G hexusers {user} 2>/dev/null
-    echo '{user}:{pwd}' | chpasswd
-    exp_date=\\$(date -d "+{days} days" +"%Y-%m-%d")
-    chage -E "\\$exp_date" {user}
-    usermod -e "\\$exp_date" {user}
-    echo "{user}:{pwd}:\\$exp_date" >> /etc/hex/users.txt
-    """
-    success, msg = run_cmd(cmd)
-    flash("Usuario creado exitosamente" if success else f"Error: {msg}")
+    exp_date = (datetime.datetime.now() + datetime.timedelta(days=days)).strftime("%Y-%m-%d")
+    
+    success1, msg1 = run_cmd(f"useradd -m -s /bin/bash -G hexusers {user} 2>/dev/null")
+    if not success1 and "already exists" not in msg1:
+        flash(f"Error al crear usuario: {msg1}")
+        return redirect(url_for('dashboard'))
+    
+    run_cmd(f"echo '{user}:{pwd}' | chpasswd")
+    run_cmd(f"chage -E {exp_date} {user}")
+    run_cmd(f"usermod -e {exp_date} {user}")
+    
+    with open("/etc/hex/users.txt", "a") as f:
+        f.write(f"{user}:{pwd}:{exp_date}\n")
+    
+    flash(f"Usuario {user} creado exitosamente (Expira: {exp_date})")
     return redirect(url_for('dashboard'))
 
 @app.route('/delete_user/<username>')
@@ -171,8 +184,8 @@ def restart_service(svc):
     return redirect(url_for('dashboard'))
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=$PANEL_PORT, debug=False)
-EOF
+    app.run(host='0.0.0.0', port=9000, debug=False)
+EOF_APP
     
     ui_ok "app.py creado"; ui_fila ""; sleep 1
 }
