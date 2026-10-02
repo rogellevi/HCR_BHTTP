@@ -671,6 +671,12 @@ systemctl stop hex-webpanel.service 2>/dev/null || true
 systemctl disable hex-webpanel.service 2>/dev/null || true
 rm -f /etc/systemd/system/hex-webpanel.service
 rm -rf /opt/hex-webpanel
+
+echo -e "  ${CYAN}Eliminando Panel Web...${NC}"
+        systemctl stop hex-webpanel.service 2>/dev/null || true
+        systemctl disable hex-webpanel.service 2>/dev/null || true
+        rm -f /etc/systemd/system/hex-webpanel.service
+        rm -rf /opt/hex-webpanel
         
         echo -e "  ${CYAN}Eliminando usuarios hexusers...${NC}"
         getent group "$USER_GROUP" >/dev/null 2>&1 && { for user in $(getent group "$USER_GROUP" | cut -d: -f4 | tr ',' '\n'); do userdel -r "$user" 2>/dev/null; done; groupdel "$USER_GROUP" 2>/dev/null; }
