@@ -370,78 +370,101 @@ gestionar_webpanel() {
     while true; do
         clear; ui_top; ui_titulo "GESTIÓN PANEL WEB"; ui_sep
         
-        webpanel_state=$(systemctl is-active $WEBPANEL_SERVICE 2>/dev/null || echo "inactivo")
-        [ "$webpanel_state" = "active" ] && webpanel_status="${GREEN}● ACTIVO${NC}" || webpanel_status="${RED}● INACTIVO${NC}"
-        
-        ui_fila "  Estado: $webpanel_status  │  Puerto: ${YELLOW}$WEBPANEL_PORT${NC}"
-        ui_fila "  URL: ${CYAN}http://$(hostname -I | awk '{print $1}'):$WEBPANEL_PORT${NC}"
-        ui_sep
-        ui_fila ""
-        
-        ui_opcion "1" "Iniciar Panel Web"
-        ui_opcion "2" "Detener Panel Web"
-        ui_opcion "3" "Reiniciar Panel Web"
-        ui_opcion "4" "Ver estado detallado"
-        ui_opcion "5" "Cambiar contraseña"
-        ui_opcion "6" "Ver logs del panel"
-        ui_opcion "0" "Atrás"
-        
-        ui_bot
-        echo ""
-        echo -ne "  ${CYAN}►${NC} Selecciona opción: "; read -r opt
-        
-        case "$opt" in
-            1)
-                systemctl start $WEBPANEL_SERVICE
-                sleep 1
-                if systemctl is-active --quiet $WEBPANEL_SERVICE; then
-                    echo -e "  ${GREEN}✓ Panel Web iniciado${NC}"
-                else
-                    echo -e "  ${RED}✗ Error al iniciar${NC}"
-                fi
-                pause_return
-                ;;
-            2)
-                systemctl stop $WEBPANEL_SERVICE
-                echo -e "  ${GREEN}✓ Panel Web detenido${NC}"
-                pause_return
-                ;;
-            3)
-                systemctl restart $WEBPANEL_SERVICE
-                echo -e "  ${GREEN}✓ Panel Web reiniciado${NC}"
-                pause_return
-                ;;
-            4)
-                echo ""
-                systemctl status $WEBPANEL_SERVICE --no-pager
-                pause_return
-                ;;
-            5)
-                clear; ui_top; ui_titulo "CAMBIAR CONTRASEÑA"; ui_sep; ui_fila ""
-                echo -ne "  ${WHITE}Nueva contraseña:${NC} "; read -rs new_pass; echo ""
-                if [ -z "$new_pass" ]; then
-                    echo -e "  ${RED}✗ La contraseña no puede estar vacía${NC}"
+        # Verificar si el panel está instalado
+        if [ ! -f "/opt/hex-webpanel/app.py" ]; then
+            ui_fila "  Estado: ${RED}● NO INSTALADO${NC}"
+            ui_fila "  ${GRIS}El panel web aún no se ha configurado en este servidor${NC}"
+            ui_sep
+            ui_fila ""
+            
+            ui_opcion "1" "Instalar Panel Web (Automático)"
+            ui_opcion "0" "Atrás"
+            
+            ui_bot
+            echo ""
+            echo -ne "  ${CYAN}►${NC} Selecciona opción: "; read -r opt
+            
+            case "$opt" in
+                1) instalar_panel_web_automatico ;;
+                0) break ;;
+                *) echo -e "  ${RED}✗ Opción inválida${NC}"; pause_return ;;
+            esac
+        else
+            # El panel YA está instalado
+            webpanel_state=$(systemctl is-active hex-webpanel.service 2>/dev/null || echo "inactivo")
+            [ "$webpanel_state" = "active" ] && webpanel_status="${GREEN}● ACTIVO${NC}" || webpanel_status="${RED}● INACTIVO${NC}"
+            
+            ui_fila "  Estado: $webpanel_status  │  Puerto: ${YELLOW}9000${NC}"
+            ui_fila "  URL: ${CYAN}http://$(hostname -I | awk '{print $1}'):9000${NC}"
+            ui_sep
+            ui_fila ""
+            
+            ui_opcion "1" "Iniciar Panel Web"
+            ui_opcion "2" "Detener Panel Web"
+            ui_opcion "3" "Reiniciar Panel Web"
+            ui_opcion "4" "Ver estado detallado"
+            ui_opcion "5" "Cambiar contraseña de admin"
+            ui_opcion "6" "Ver logs del panel"
+            ui_opcion "7" "Desinstalar Panel Web"
+            ui_opcion "0" "Atrás"
+            
+            ui_bot
+            echo ""
+            echo -ne "  ${CYAN}►${NC} Selecciona opción: "; read -r opt
+            
+            case "$opt" in
+                1)
+                    systemctl start hex-webpanel.service
+                    sleep 1
+                    systemctl is-active --quiet hex-webpanel.service && echo -e "  ${GREEN}✓ Panel Web iniciado${NC}" || echo -e "  ${RED}✗ Error al iniciar${NC}"
                     pause_return
-                    continue
-                fi
-                if [ -f "/opt/hex-webpanel/app.py" ]; then
+                    ;;
+                2)
+                    systemctl stop hex-webpanel.service
+                    echo -e "  ${GREEN}✓ Panel Web detenido${NC}"
+                    pause_return
+                    ;;
+                3)
+                    systemctl restart hex-webpanel.service
+                    echo -e "  ${GREEN}✓ Panel Web reiniciado${NC}"
+                    pause_return
+                    ;;
+                4)
+                    echo ""
+                    systemctl status hex-webpanel.service --no-pager
+                    pause_return
+                    ;;
+                5)
+                    clear; ui_top; ui_titulo "CAMBIAR CONTRASEÑA"; ui_sep; ui_fila ""
+                    echo -ne "  ${WHITE}Nueva contraseña:${NC} "; read -rs new_pass; echo ""
+                    if [ -z "$new_pass" ]; then
+                        echo -e "  ${RED}✗ La contraseña no puede estar vacía${NC}"
+                        pause_return; continue
+                    fi
                     sed -i "s/ADMIN_PASSWORD = .*/ADMIN_PASSWORD = \"$new_pass\"/" /opt/hex-webpanel/app.py
-                    systemctl restart $WEBPANEL_SERVICE
+                    systemctl restart hex-webpanel.service
                     echo -e "  ${GREEN}✓ Contraseña actualizada${NC}"
-                    echo -e "  ${YELLOW}Reinicia sesión en el panel para aplicar cambios${NC}"
-                else
-                    echo -e "  ${RED}✗ No se encontró el archivo del panel${NC}"
-                fi
-                pause_return
-                ;;
-            6)
-                echo ""
-                journalctl -u $WEBPANEL_SERVICE -n 50 --no-pager
-                pause_return
-                ;;
-            0) break ;;
-            *) echo -e "  ${RED}✗ Opción inválida${NC}"; pause_return ;;
-        esac
+                    pause_return
+                    ;;
+                6)
+                    echo ""
+                    journalctl -u hex-webpanel.service -n 50 --no-pager
+                    pause_return
+                    ;;
+                7)
+                    echo -e "  ${CYAN}Desinstalando Panel Web...${NC}"
+                    systemctl stop hex-webpanel.service 2>/dev/null
+                    systemctl disable hex-webpanel.service 2>/dev/null
+                    rm -f /etc/systemd/system/hex-webpanel.service
+                    rm -rf /opt/hex-webpanel
+                    systemctl daemon-reload
+                    echo -e "  ${GREEN}✓ Panel Web desinstalado${NC}"
+                    pause_return
+                    ;;
+                0) break ;;
+                *) echo -e "  ${RED}✗ Opción inválida${NC}"; pause_return ;;
+            esac
+        fi
     done
     menu_principal
 }
