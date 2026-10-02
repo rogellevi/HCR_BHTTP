@@ -241,6 +241,55 @@ EOF_CLEANUP
     ui_fila ""; sleep 1
 }
 
+instalar_panel_web() {
+    clear; ui_top; ui_titulo "INSTALANDO PANEL WEB"; ui_sep; ui_fila ""
+    
+    ui_info "Instalando dependencias de Python..."
+    apt-get install -y python3 python3-pip python3-venv >/dev/null 2>&1
+    
+    PANEL_DIR="/opt/hex-webpanel"
+    PANEL_PORT=9000
+    ADMIN_PASS="HexAdmin2026"
+    
+    ui_info "Creando estructura del panel..."
+    mkdir -p "$PANEL_DIR/templates"
+    cd "$PANEL_DIR" || exit 1
+    python3 -m venv venv >/dev/null 2>&1
+    source venv/bin/activate
+    pip install flask flask-login psutil >/dev/null 2>&1
+    
+    ui_info "Creando aplicación..."
+    # (Aquí va todo el código de app.py que está en install_webpanel.sh)
+    # Para ahorrar espacio, puedes copiar el contenido de la función crear_app() del instalador del panel
+    
+    ui_info "Configurando servicio..."
+    cat > /etc/systemd/system/hex-webpanel.service <<EOF
+[Unit]
+Description=Hex Web Panel
+After=network.target
+
+[Service]
+User=root
+WorkingDirectory=$PANEL_DIR
+Environment="PATH=$PANEL_DIR/venv/bin"
+ExecStart=$PANEL_DIR/venv/bin/python app.py
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    
+    systemctl daemon-reload >/dev/null 2>&1
+    systemctl enable hex-webpanel.service >/dev/null 2>&1
+    
+    iptables -I INPUT -p tcp --dport $PANEL_PORT -j ACCEPT 2>/dev/null
+    command -v ufw >/dev/null 2>&1 && ufw allow $PANEL_PORT/tcp >/dev/null 2>&1
+    
+    systemctl start hex-webpanel.service
+    ui_ok "Panel Web instalado en puerto $PANEL_PORT"
+    ui_fila ""; sleep 1
+}
+
 mostrar_resumen() {
     clear; ui_top; ui_titulo "✓ INSTALACIÓN COMPLETADA"; ui_sep; ui_fila ""
     
@@ -271,4 +320,5 @@ compilar_udpgw
 configurar_servicios
 iniciar_y_configurar_firewall
 instalar_menu_y_limpieza
+instalar_panel_web
 mostrar_resumen
