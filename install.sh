@@ -1,32 +1,22 @@
 #!/bin/bash
 
 # ═══════════════════════════════════════════════════════════════
-#  HEX MANAGER - INSTALADOR AUTOMÁTICO (Con compilación de UDPGW)
+#  HEX MANAGER - INSTALADOR AUTOMÁTICO (Múltiples Puertos)
 #  Repositorio: https://github.com/rogellevi/HCR_BHTTP
 # ═══════════════════════════════════════════════════════════════
 
 set -o pipefail
 export DEBIAN_FRONTEND=noninteractive
 
-RED='\033[38;5;203m'
-GREEN='\033[38;5;84m'
-YELLOW='\033[38;5;221m'
-CYAN='\033[38;5;51m'
-WHITE='\033[38;5;255m'
-NC='\033[0m'
-BOLD='\033[1m'
-ACC='\033[38;5;44m'
-GRIS='\033[38;5;245m'
+RED='\033[38;5;203m'; GREEN='\033[38;5;84m'; YELLOW='\033[38;5;221m'
+CYAN='\033[38;5;51m'; WHITE='\033[38;5;255m'; NC='\033[0m'
+BOLD='\033[1m'; ACC='\033[38;5;44m'; GRIS='\033[38;5;245m'
 
 GITHUB_RAW="https://raw.githubusercontent.com/rogellevi/HCR_BHTTP/main"
-BHTTP_PORT=80
-HCR_PORT=8080
 BHTTP_BIN="/opt/bhttp/bhttp-server"
 HCR_BIN="/opt/hcr/hcr-server"
 UDPGW_BIN="/opt/udpgw/udpgw-server"
 USER_DB="/etc/hex/users.txt"
-PORTS_CONF="/etc/hex/ports.conf"
-UDPGW_PORTS_CONF="/etc/hex/udpgw_ports.conf"
 LOG_FILE="/var/log/hex-installation.log"
 
 ui_top() { echo -e "${ACC}╔════════════════════════════════════════════════════════════╗${NC}"; }
@@ -59,8 +49,14 @@ detectar_arquitectura() {
 limpiar_instalacion_previa() {
     ui_info "Verificando instalación previa..."
     systemctl stop bhttp-server.service hcr-server.service 2>/dev/null || true
-    systemctl disable bhttp-server.service hcr-server.service 2>/dev/null || true
-    rm -f /etc/systemd/system/bhttp-server.service /etc/systemd/system/hcr-server.service /etc/systemd/system/udpgw@.service
+    # Detener todas las instancias de plantillas existentes
+    for svc in bhttp hcr udpgw; do
+        for instance in $(systemctl list-units --full --all "${svc}@*.service" | grep -oP "${svc}@\K[0-9]+"); do
+            systemctl stop "${svc}@${instance}.service" 2>/dev/null || true
+        done
+    done
+    rm -f /etc/systemd/system/bhttp-server.service /etc/systemd/system/hcr-server.service
+    rm -f /etc/systemd/system/bhttp@.service /etc/systemd/system/hcr@.service /etc/systemd/system/udpgw@.service
     systemctl daemon-reload >/dev/null 2>&1
     ui_ok "Limpieza completada"
 }
@@ -97,7 +93,7 @@ compilar_udpgw() {
     cd badvpn || exit 1
     mkdir -p build && cd build || exit 1
     
-    ui_info "Compilando solo el módulo udpgw (esto puede tardar unos segundos)..."
+    ui_info "Compilando solo el módulo udpgw..."
     cmake .. -DBUILD_NOTHING_BY_DEFAULT=1 -DBUILD_UDPGW=1 >/dev/null 2>&1
     make -j"$(nproc)" >/dev/null 2>&1
     
@@ -105,9 +101,9 @@ compilar_udpgw() {
         mkdir -p /opt/udpgw
         cp udpgw/badvpn-udpgw /opt/udpgw/udpgw-server
         chmod +x /opt/udpgw/udpgw-server
-        ui_ok "UDPGW compilado e instalado en /opt/udpgw/udpgw-server"
+        ui_ok "UDPGW compilado e instalado"
     else
-        ui_warn "La compilación de UDPGW falló (puedes continuar sin él)"
+        ui_warn "La compilación de UDPGW falló"
     fi
     cd /tmp || exit 1
     rm -rf badvpn
@@ -117,51 +113,55 @@ compilar_udpgw() {
 configurar_servicios() {
     clear; ui_top; ui_titulo "4/6 CONFIGURANDO SERVICIOS"; ui_sep; ui_fila ""
     
-    echo "BHTTP_PORT=$BHTTP_PORT" > "$PORTS_CONF"
-    echo "HCR_PORT=$HCR_PORT" >> "$PORTS_CONF"
-    echo -e "7300\n7301" > "$UDPGW_PORTS_CONF"
+    # Archivos de puertos por defecto
+    echo -e "80\n8080" > /etc/hex/bhttp_ports.conf
+    echo -e "8080\n8081" > /etc/hex/hcr_ports.conf
+    echo -e "7300\n7301" > /etc/hex/udpgw_ports.conf
     touch "$USER_DB" && chmod 600 "$USER_DB"
     
-    ui_info "Configurando BHTTP..."
-    cat > /etc/systemd/system/bhttp-server.service <<EOF
+    # Plantilla BHTTP
+    ui_info "Configurando plantilla BHTTP..."
+    cat > /etc/systemd/system/bhttp@.service <<EOF
 [Unit]
-Description=BHTTP Server
+Description=BHTTP Server on port %i
 After=network.target
 [Service]
 Type=simple
 User=root
-ExecStart=$BHTTP_BIN -listen 0.0.0.0 -port $BHTTP_PORT -backend-host 127.0.0.1 -backend-port 22
+ExecStart=$BHTTP_BIN -listen 0.0.0.0 -port %i -backend-host 127.0.0.1 -backend-port 22
 Restart=on-failure
 RestartSec=5
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=bhttp
+SyslogIdentifier=bhttp-%i
 [Install]
 WantedBy=multi-user.target
 EOF
-    systemctl daemon-reload && systemctl enable bhttp-server.service >/dev/null 2>&1
-    ui_ok "BHTTP configurado"
+    systemctl daemon-reload >/dev/null 2>&1
+    ui_ok "Plantilla BHTTP configurada"
 
-    ui_info "Configurando HCR..."
-    cat > /etc/systemd/system/hcr-server.service <<EOF
+    # Plantilla HCR
+    ui_info "Configurando plantilla HCR..."
+    cat > /etc/systemd/system/hcr@.service <<EOF
 [Unit]
-Description=HCR Server
+Description=HCR Server on port %i
 After=network.target
 [Service]
 Type=simple
 User=root
-ExecStart=$HCR_BIN --listen :$HCR_PORT --target 127.0.0.1:22 --transport plain
+ExecStart=$HCR_BIN --listen :%i --target 127.0.0.1:22 --transport plain
 Restart=on-failure
 RestartSec=5
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=hcr
+SyslogIdentifier=hcr-%i
 [Install]
 WantedBy=multi-user.target
 EOF
-    systemctl daemon-reload && systemctl enable hcr-server.service >/dev/null 2>&1
-    ui_ok "HCR configurado"
+    systemctl daemon-reload >/dev/null 2>&1
+    ui_ok "Plantilla HCR configurada"
 
+    # Plantilla UDPGW
     ui_info "Configurando plantilla UDPGW..."
     cat > /etc/systemd/system/udpgw@.service <<EOF
 [Unit]
@@ -184,8 +184,35 @@ EOF
     ui_fila ""; sleep 1
 }
 
+iniciar_y_configurar_firewall() {
+    clear; ui_top; ui_titulo "5/6 FIREWALL E INICIO"; ui_sep; ui_fila ""
+    
+    # Función auxiliar para iniciar un servicio y abrir firewall
+    iniciar_puerto() {
+        local svc=$1 port=$2 proto=$3
+        systemctl enable "${svc}@${port}.service" >/dev/null 2>&1
+        systemctl start "${svc}@${port}.service" 2>>"$LOG_FILE"
+        iptables -I INPUT -p $proto --dport $port -j ACCEPT 2>/dev/null
+        command -v ufw >/dev/null 2>&1 && ufw allow $port/$proto >/dev/null 2>&1
+    }
+
+    ui_info "Iniciando puertos BHTTP..."
+    while read -r port; do [ -z "$port" ] && continue; iniciar_puerto "bhttp" "$port" "tcp"; done < /etc/hex/bhttp_ports.conf
+    ui_ok "BHTTP iniciado"
+
+    ui_info "Iniciando puertos HCR..."
+    while read -r port; do [ -z "$port" ] && continue; iniciar_puerto "hcr" "$port" "tcp"; done < /etc/hex/hcr_ports.conf
+    ui_ok "HCR iniciado"
+
+    ui_info "Iniciando puertos UDPGW..."
+    while read -r port; do [ -z "$port" ] && continue; iniciar_puerto "udpgw" "$port" "udp"; iniciar_puerto "udpgw" "$port" "tcp"; done < /etc/hex/udpgw_ports.conf
+    ui_ok "UDPGW iniciado"
+    
+    ui_fila ""; sleep 1
+}
+
 instalar_menu_y_limpieza() {
-    clear; ui_top; ui_titulo "5/6 INSTALANDO MENÚ Y LIMPIEZA"; ui_sep; ui_fila ""
+    clear; ui_top; ui_titulo "6/6 INSTALANDO MENÚ Y LIMPIEZA"; ui_sep; ui_fila ""
     ui_info "Descargando menú de gestión..."
     descargar_archivo "${GITHUB_RAW}/hex_menu.sh" "/usr/local/bin/hex_menu"
     [ -f "/usr/local/bin/hex_menu" ] && chmod +x /usr/local/bin/hex_menu && cp /usr/local/bin/hex_menu /usr/bin/hex_menu 2>/dev/null && ui_ok "Menú instalado" || ui_error "Fallo al descargar menú"
@@ -193,9 +220,7 @@ instalar_menu_y_limpieza() {
     ui_info "Configurando limpieza automática..."
     cat > /usr/local/bin/hex_cleanup.sh <<'EOF_CLEANUP'
 #!/bin/bash
-USER_DB="/etc/hex/users.txt"
-LOG_FILE="/var/log/hex-cleanup.log"
-CURRENT_TIMESTAMP=$(date +%s)
+USER_DB="/etc/hex/users.txt"; LOG_FILE="/var/log/hex-cleanup.log"; CURRENT_TIMESTAMP=$(date +%s)
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> "$LOG_FILE"; }
 [ ! -s "$USER_DB" ] && exit 0
 deleted_count=0
@@ -204,8 +229,7 @@ while IFS=: read -r user pass exp; do
     exp_timestamp=$(date -d "$exp" +%s 2>/dev/null || echo "0")
     if [ "$exp_timestamp" -lt "$CURRENT_TIMESTAMP" ]; then
         id "$user" >/dev/null 2>&1 && userdel -r "$user" 2>/dev/null
-        sed -i "/^${user}:/d" "$USER_DB"
-        ((deleted_count++))
+        sed -i "/^${user}:/d" "$USER_DB"; ((deleted_count++))
     fi
 done < "$USER_DB"
 log "Limpieza completada. Eliminados: $deleted_count"
@@ -217,42 +241,17 @@ EOF_CLEANUP
     ui_fila ""; sleep 1
 }
 
-configurar_firewall_e_iniciar() {
-    clear; ui_top; ui_titulo "6/6 FIREWALL E INICIO"; ui_sep; ui_fila ""
-    
-    # Firewall
-    for port in $BHTTP_PORT $HCR_PORT; do
-        iptables -C INPUT -p tcp --dport $port -j ACCEPT 2>/dev/null || iptables -I INPUT -p tcp --dport $port -j ACCEPT
-        command -v ufw >/dev/null 2>&1 && ufw allow $port/tcp >/dev/null 2>&1
-    done
-    
-    # Iniciar UDPGW puertos por defecto
-    if [ -f "$UDPGW_PORTS_CONF" ]; then
-        while read -r port; do
-            [ -z "$port" ] && continue
-            systemctl enable "udpgw@${port}.service" >/dev/null 2>&1
-            systemctl start "udpgw@${port}.service" 2>>"$LOG_FILE"
-            iptables -I INPUT -p udp --dport $port -j ACCEPT 2>/dev/null
-            iptables -I INPUT -p tcp --dport $port -j ACCEPT 2>/dev/null
-            command -v ufw >/dev/null 2>&1 && { ufw allow $port/udp >/dev/null 2>&1; ufw allow $port/tcp >/dev/null 2>&1; }
-        done < "$UDPGW_PORTS_CONF"
-    fi
-    
-    systemctl start bhttp-server.service hcr-server.service 2>>"$LOG_FILE"
-    ui_ok "Servicios iniciados y puertos abiertos"
-    ui_fila ""; sleep 1
-}
-
 mostrar_resumen() {
     clear; ui_top; ui_titulo "✓ INSTALACIÓN COMPLETADA"; ui_sep; ui_fila ""
-    bhttp_state=$(systemctl is-active bhttp-server.service 2>/dev/null || echo "inactivo")
-    hcr_state=$(systemctl is-active hcr-server.service 2>/dev/null || echo "inactivo")
-    [ "$bhttp_state" = "active" ] && bhttp_status="${GREEN}● ACTIVO${NC}" || bhttp_status="${RED}● INACTIVO${NC}"
-    [ "$hcr_state" = "active" ] && hcr_status="${GREEN}● ACTIVO${NC}" || hcr_status="${RED}● INACTIVO${NC}"
     
-    ui_fila "  ${CYAN}BHTTP${NC} - Puerto $BHTTP_PORT  $bhttp_status"
-    ui_fila "  ${CYAN}HCR${NC}   - Puerto $HCR_PORT  $hcr_status"
-    ui_fila "  ${CYAN}UDPGW${NC}  - Puertos 7300, 7301  ${GREEN}● ACTIVO${NC}"
+    # Contar estados
+    bhttp_active=$(grep -c "." /etc/hex/bhttp_ports.conf 2>/dev/null || echo 0)
+    hcr_active=$(grep -c "." /etc/hex/hcr_ports.conf 2>/dev/null || echo 0)
+    udpgw_active=$(grep -c "." /etc/hex/udpgw_ports.conf 2>/dev/null || echo 0)
+    
+    ui_fila "  ${CYAN}BHTTP${NC} - $bhttp_active puertos configurados  ${GREEN}● ACTIVO${NC}"
+    ui_fila "  ${CYAN}HCR${NC}   - $hcr_active puertos configurados  ${GREEN}● ACTIVO${NC}"
+    ui_fila "  ${CYAN}UDPGW${NC}  - $udpgw_active puertos configurados  ${GREEN}● ACTIVO${NC}"
     ui_fila ""
     ui_sep
     ui_fila "  ${BOLD}Comando:${NC}  ${YELLOW}hex_menu${NC}"
@@ -270,6 +269,6 @@ instalar_dependencias
 descargar_binarios
 compilar_udpgw
 configurar_servicios
+iniciar_y_configurar_firewall
 instalar_menu_y_limpieza
-configurar_firewall_e_iniciar
 mostrar_resumen
