@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ═══════════════════════════════════════════════════════════════
-#  HEX MANAGER - MENÚ DE GESTIÓN COMPLETO (v2.1 - Corregido)
+#  HEX MANAGER - MENÚ DE GESTIÓN COMPLETO (v3.0)
 #  Repositorio: https://github.com/rogellevi/HCR_BHTTP
 # ═══════════════════════════════════════════════════════════════
 
@@ -250,7 +250,7 @@ generic_control_individual() {
 }
 
 # ═══════════════════════════════════════════════════════════════
-#  GESTIÓN DEL PANEL WEB (INTELIGENTE)
+#  INSTALACIÓN AUTOMÁTICA DEL PANEL WEB (CON DISEÑO MODERNO)
 # ═══════════════════════════════════════════════════════════════
 
 instalar_panel_web_automatico() {
@@ -270,130 +270,620 @@ instalar_panel_web_automatico() {
     ui_info "Creando archivos de la aplicación..."
     
     cat > /opt/hex-webpanel/app.py <<'EOF_APP'
-import os, subprocess, datetime
+import os, subprocess, datetime, logging
 from flask import Flask, render_template, request, redirect, url_for, flash
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user
 
+logging.basicConfig(filename='/var/log/hex-webpanel.log', level=logging.INFO, 
+                    format='%(asctime)s - %(levelname)s - %(message)s')
+
 app = Flask(__name__)
 app.secret_key = 'hex_secret_key_cambiar_123'
-login_manager = LoginManager(); login_manager.init_app(app); login_manager.login_view = 'login'
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = 'login'
 ADMIN_PASSWORD = "HexAdmin2026"
+
+SYSTEMCTL = '/usr/bin/systemctl'
+USERADD = '/usr/sbin/useradd'
+USERDEL = '/usr/sbin/userdel'
+USERMOD = '/usr/sbin/usermod'
+CHPASSWD = '/usr/sbin/chpasswd'
+CHAGE = '/usr/bin/chage'
+GROUPADD = '/usr/sbin/groupadd'
+ID = '/usr/bin/id'
+GETENT = '/usr/bin/getent'
 
 class User(UserMixin):
     def __init__(self, id): self.id = id
+
 @login_manager.user_loader
 def load_user(user_id): return User(user_id)
 
-def run_cmd(cmd):
-    try:
-        result = subprocess.run(cmd, shell=True, capture_output=True, text=True, check=True)
-        return True, result.stdout
-    except subprocess.CalledProcessError as e: return False, e.stderr
-
 def get_service_status(svc, port):
     try:
-        result = subprocess.run(f"systemctl is-active {svc}@{port}.service", shell=True, capture_output=True, text=True)
+        result = subprocess.run([SYSTEMCTL, 'is-active', f"{svc}@{port}.service"], 
+                              capture_output=True, text=True)
         return result.returncode == 0 and "active" in result.stdout
     except: return False
 
 def get_users():
     users = []
     if os.path.exists("/etc/hex/users.txt"):
-        with open("/etc/hex/users.txt", "r") as f:
-            for line in f:
-                parts = line.strip().split(":")
-                if len(parts) == 3: users.append({"user": parts[0], "exp": parts[2]})
+        try:
+            with open("/etc/hex/users.txt", "r") as f:
+                for line in f:
+                    parts = line.strip().split(":")
+                    if len(parts) == 3: 
+                        users.append({"user": parts[0], "exp": parts[2]})
+        except Exception as e:
+            logging.error(f"Error leyendo users.txt: {e}")
     return users
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
         if request.form['password'] == ADMIN_PASSWORD:
-            login_user(User("admin")); return redirect(url_for('dashboard'))
+            login_user(User("admin"))
+            return redirect(url_for('dashboard'))
         flash('Contraseña incorrecta')
     return render_template('login.html')
 
 @app.route('/logout')
 @login_required
-def logout(): logout_user(); return redirect(url_for('login'))
+def logout(): 
+    logout_user()
+    return redirect(url_for('login'))
 
 @app.route('/')
 @login_required
 def dashboard():
-    bhttp_ports = open("/etc/hex/bhttp_ports.conf").read().splitlines() if os.path.exists("/etc/hex/bhttp_ports.conf") else []
-    hcr_ports = open("/etc/hex/hcr_ports.conf").read().splitlines() if os.path.exists("/etc/hex/hcr_ports.conf") else []
-    udpgw_ports = open("/etc/hex/udpgw_ports.conf").read().splitlines() if os.path.exists("/etc/hex/udpgw_ports.conf") else []
-    stats = {
-        "bhttp": sum(1 for p in bhttp_ports if get_service_status("bhttp", p)),
-        "hcr": sum(1 for p in hcr_ports if get_service_status("hcr", p)),
-        "udpgw": sum(1 for p in udpgw_ports if get_service_status("udpgw", p)),
-        "users": len(get_users())
-    }
-    return render_template('dashboard.html', stats=stats, users=get_users())
+    try:
+        bhttp_ports = open("/etc/hex/bhttp_ports.conf").read().splitlines() if os.path.exists("/etc/hex/bhttp_ports.conf") else []
+        hcr_ports = open("/etc/hex/hcr_ports.conf").read().splitlines() if os.path.exists("/etc/hex/hcr_ports.conf") else []
+        udpgw_ports = open("/etc/hex/udpgw_ports.conf").read().splitlines() if os.path.exists("/etc/hex/udpgw_ports.conf") else []
+        
+        stats = {
+            "bhttp_ports": [p for p in bhttp_ports if p.strip()],
+            "hcr_ports": [p for p in hcr_ports if p.strip()],
+            "udpgw_ports": [p for p in udpgw_ports if p.strip()],
+            "bhttp_active": sum(1 for p in bhttp_ports if get_service_status("bhttp", p)),
+            "hcr_active": sum(1 for p in hcr_ports if get_service_status("hcr", p)),
+            "udpgw_active": sum(1 for p in udpgw_ports if get_service_status("udpgw", p)),
+            "users": len(get_users())
+        }
+        return render_template('dashboard.html', stats=stats, users=get_users())
+    except Exception as e:
+        logging.error(f"Error en dashboard: {e}")
+        flash(f"Error al cargar dashboard: {str(e)}")
+        return render_template('dashboard.html', stats={"bhttp_ports":[], "hcr_ports":[], "udpgw_ports":[], "bhttp_active":0, "hcr_active":0, "udpgw_active":0, "users":0}, users=[])
 
 @app.route('/add_user', methods=['POST'])
 @login_required
 def add_user():
-    user, pwd, days = request.form['username'], request.form['password'], int(request.form['days'])
-    exp_date = (datetime.datetime.now() + datetime.timedelta(days=days)).strftime("%Y-%m-%d")
-    success1, msg1 = run_cmd(f"useradd -m -s /bin/bash -G hexusers {user} 2>/dev/null")
-    if not success1 and "already exists" not in msg1:
-        flash(f"Error: {msg1}"); return redirect(url_for('dashboard'))
-    run_cmd(f"echo '{user}:{pwd}' | chpasswd")
-    run_cmd(f"chage -E {exp_date} {user}"); run_cmd(f"usermod -e {exp_date} {user}")
-    with open("/etc/hex/users.txt", "a") as f: f.write(f"{user}:{pwd}:{exp_date}\n")
-    flash(f"Usuario {user} creado (Expira: {exp_date})")
-    return redirect(url_for('dashboard'))
+    try:
+        user = request.form['username'].strip().lower()
+        pwd = request.form['password']
+        days = int(request.form['days'])
+        
+        if not user or not pwd or days < 1:
+            flash("Todos los campos son obligatorios y los días deben ser positivos")
+            return redirect(url_for('dashboard'))
+            
+        if not user.isalnum() and not all(c.isalnum() or c in '_-' for c in user):
+            flash("El usuario solo puede contener letras, números, guiones y guiones bajos")
+            return redirect(url_for('dashboard'))
+        
+        check_user = subprocess.run([ID, user], capture_output=True, text=True)
+        if check_user.returncode == 0:
+            flash(f"El usuario '{user}' ya existe en el sistema")
+            return redirect(url_for('dashboard'))
+        
+        check_group = subprocess.run([GETENT, 'group', 'hexusers'], capture_output=True, text=True)
+        if check_group.returncode != 0:
+            subprocess.run([GROUPADD, 'hexusers'], capture_output=True)
+        
+        exp_date = (datetime.datetime.now() + datetime.timedelta(days=days)).strftime("%Y-%m-%d")
+        
+        res = subprocess.run([USERADD, '-m', '-s', '/bin/bash', '-G', 'hexusers', user], 
+                           capture_output=True, text=True)
+        if res.returncode != 0:
+            logging.error(f"Error creando usuario: {res.stderr}")
+            flash(f"Error al crear usuario: {res.stderr}")
+            return redirect(url_for('dashboard'))
+        
+        res_pwd = subprocess.run([CHPASSWD], input=f"{user}:{pwd}", 
+                                text=True, capture_output=True)
+        if res_pwd.returncode != 0:
+            logging.error(f"Error estableciendo contraseña: {res_pwd.stderr}")
+            flash(f"Error al establecer contraseña: {res_pwd.stderr}")
+            subprocess.run([USERDEL, '-r', user], capture_output=True)
+            return redirect(url_for('dashboard'))
+        
+        subprocess.run([CHAGE, '-E', exp_date, user], capture_output=True)
+        subprocess.run([USERMOD, '-e', exp_date, user], capture_output=True)
+        
+        with open("/etc/hex/users.txt", "a") as f: 
+            f.write(f"{user}:{pwd}:{exp_date}\n")
+        
+        logging.info(f"Usuario creado: {user}, expira: {exp_date}")
+        flash(f"✓ Usuario '{user}' creado exitosamente (Expira: {exp_date})")
+        return redirect(url_for('dashboard'))
+        
+    except ValueError:
+        flash("Error: Los días deben ser un número válido")
+        return redirect(url_for('dashboard'))
+    except Exception as e:
+        logging.error(f"Error inesperado creando usuario: {str(e)}", exc_info=True)
+        flash(f"Error inesperado: {str(e)}")
+        return redirect(url_for('dashboard'))
 
 @app.route('/delete_user/<username>')
 @login_required
 def delete_user(username):
-    run_cmd(f"userdel -r {username} 2>/dev/null"); run_cmd(f"sed -i '/^{username}:/d' /etc/hex/users.txt")
-    flash(f"Usuario {username} eliminado"); return redirect(url_for('dashboard'))
+    try:
+        subprocess.run([USERDEL, '-r', username], capture_output=True)
+        
+        if os.path.exists("/etc/hex/users.txt"):
+            with open("/etc/hex/users.txt", "r") as f:
+                lines = f.readlines()
+            with open("/etc/hex/users.txt", "w") as f:
+                for line in lines:
+                    if not line.startswith(f"{username}:"):
+                        f.write(line)
+        
+        logging.info(f"Usuario eliminado: {username}")
+        flash(f"✓ Usuario '{username}' eliminado correctamente")
+    except Exception as e:
+        logging.error(f"Error eliminando usuario {username}: {e}")
+        flash(f"Error al eliminar usuario: {str(e)}")
+    
+    return redirect(url_for('dashboard'))
 
-@app.route('/restart_service/<svc>')
+@app.route('/control_service/<svc>/<action>')
 @login_required
-def restart_service(svc):
-    run_cmd(f"systemctl restart '{svc}@*.service' 2>/dev/null")
-    flash(f"Servicio {svc.upper()} reiniciado"); return redirect(url_for('dashboard'))
+def control_service(svc, action):
+    try:
+        if svc not in ['bhttp', 'hcr', 'udpgw']:
+            flash(f"Servicio inválido: {svc}")
+            return redirect(url_for('dashboard'))
+        
+        if action not in ['start', 'stop', 'restart']:
+            flash(f"Acción inválida: {action}")
+            return redirect(url_for('dashboard'))
+        
+        conf_file = f"/etc/hex/{svc}_ports.conf"
+        if not os.path.exists(conf_file):
+            flash(f"No hay puertos configurados para {svc.upper()}")
+            return redirect(url_for('dashboard'))
+        
+        with open(conf_file, 'r') as f:
+            ports = [p.strip() for p in f.readlines() if p.strip()]
+        
+        if not ports:
+            flash(f"No hay puertos configurados para {svc.upper()}")
+            return redirect(url_for('dashboard'))
+        
+        success_count = 0
+        error_count = 0
+        
+        for port in ports:
+            service_name = f"{svc}@{port}.service"
+            result = subprocess.run([SYSTEMCTL, action, service_name], 
+                                  capture_output=True, text=True)
+            if result.returncode == 0:
+                success_count += 1
+            else:
+                error_count += 1
+                logging.error(f"Error en {action} {service_name}: {result.stderr}")
+        
+        if error_count == 0:
+            flash(f"✓ {svc.upper()}: {action.capitalize()} exitoso en {success_count} puerto(s)")
+        else:
+            flash(f"⚠ {svc.upper()}: {success_count} exitoso(s), {error_count} error(es)")
+        
+        logging.info(f"Acción {action} en {svc}: {success_count} exitosos, {error_count} errores")
+        
+    except Exception as e:
+        logging.error(f"Error controlando servicio {svc}: {e}")
+        flash(f"Error al controlar servicio: {str(e)}")
+    
+    return redirect(url_for('dashboard'))
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=9000, debug=False)
 EOF_APP
 
-    ui_info "Creando interfaz web..."
+    ui_info "Creando interfaz web moderna..."
+    
     cat > /opt/hex-webpanel/templates/login.html <<'EOF_LOGIN'
-<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Hex Panel</title>
-<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-<style>body{background-color:#121212;color:#e0e0e0;display:flex;align-items:center;justify-content:center;height:100vh}.card{background-color:#1e1e1e;border:1px solid #333}.btn-primary{background-color:#00c853;border:none}</style></head>
-<body><div class="card p-4" style="width:350px"><h3 class="text-center mb-4 text-success">🔐 Hex Panel</h3>
-{% with messages = get_flashed_messages() %}{% if messages %}<div class="alert alert-danger">{{ messages[0] }}</div>{% endif %}{% endwith %}
-<form method="POST"><div class="mb-3"><label>Contraseña de Administrador</label>
-<input type="password" name="password" class="form-control bg-dark text-light" required></div>
-<button type="submit" class="btn btn-primary w-100">Ingresar</button></form></div></body></html>
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hex Panel - Acceso</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(-45deg, #0a0a0a, #1a1a2e, #16213e, #0f3460);
+            background-size: 400% 400%;
+            animation: gradientBG 15s ease infinite;
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            padding: 20px;
+            overflow-x: hidden;
+        }
+        @keyframes gradientBG {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+        .login-card {
+            background: rgba(30, 30, 46, 0.7);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+            padding: 40px 35px;
+            width: 100%;
+            max-width: 400px;
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
+            animation: slideIn 0.6s ease-out;
+        }
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(-30px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .logo-container { text-align: center; margin-bottom: 30px; }
+        .logo-hex {
+            width: 80px; height: 80px; margin: 0 auto 15px;
+            background: linear-gradient(135deg, #00c853, #00e676);
+            clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+            display: flex; align-items: center; justify-content: center;
+            animation: pulse 2s ease-in-out infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(0, 200, 83, 0.7); }
+            50% { transform: scale(1.05); box-shadow: 0 0 30px 10px rgba(0, 200, 83, 0); }
+        }
+        .logo-hex i { font-size: 40px; color: #fff; }
+        .title { color: #fff; font-size: 28px; font-weight: 700; margin-bottom: 5px; }
+        .subtitle { color: #8b8b9e; font-size: 14px; }
+        .form-floating > .form-control {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #fff; border-radius: 12px; height: 58px;
+            padding: 1rem .75rem; transition: all 0.3s ease;
+        }
+        .form-floating > .form-control:focus {
+            background: rgba(255, 255, 255, 0.08);
+            border-color: #00c853;
+            box-shadow: 0 0 0 3px rgba(0, 200, 83, 0.2);
+            color: #fff;
+        }
+        .form-floating > label { color: #8b8b9e; padding: 1rem .75rem; }
+        .form-floating > .form-control:focus ~ label,
+        .form-floating > .form-control:not(:placeholder-shown) ~ label { color: #00c853; }
+        .btn-login {
+            background: linear-gradient(135deg, #00c853, #00e676);
+            border: none; color: #fff; font-weight: 600;
+            padding: 14px; border-radius: 12px; width: 100%;
+            font-size: 16px; transition: all 0.3s ease; margin-top: 10px;
+        }
+        .btn-login:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(0, 200, 83, 0.4);
+            color: #fff;
+        }
+        .btn-login:active { transform: translateY(0); }
+        .alert-error {
+            background: rgba(255, 82, 82, 0.15);
+            border: 1px solid rgba(255, 82, 82, 0.3);
+            color: #ff6b6b; border-radius: 12px;
+            padding: 12px 15px; margin-bottom: 20px;
+            font-size: 14px; text-align: center;
+            animation: shake 0.5s ease-in-out;
+        }
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-10px); }
+            75% { transform: translateX(10px); }
+        }
+        .footer-text { text-align: center; color: #5a5a6e; font-size: 12px; margin-top: 25px; }
+        .input-icon {
+            position: absolute; right: 15px; top: 50%;
+            transform: translateY(-50%); color: #5a5a6e;
+            z-index: 5; pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-card">
+        <div class="logo-container">
+            <div class="logo-hex"><i class="bi bi-hexagon-fill"></i></div>
+            <h1 class="title">Hex Panel</h1>
+            <p class="subtitle">Panel de Administración</p>
+        </div>
+        {% with messages = get_flashed_messages() %}
+          {% if messages %}
+            <div class="alert-error">
+                <i class="bi bi-exclamation-triangle-fill"></i> {{ messages[0] }}
+            </div>
+          {% endif %}
+        {% endwith %}
+        <form method="POST">
+            <div class="form-floating mb-3 position-relative">
+                <input type="password" class="form-control" id="password" name="password" placeholder="Contraseña" required autofocus>
+                <label for="password"><i class="bi bi-lock-fill me-2"></i>Contraseña</label>
+                <i class="bi bi-key-fill input-icon"></i>
+            </div>
+            <button type="submit" class="btn btn-login">
+                <i class="bi bi-box-arrow-in-right me-2"></i>Iniciar Sesión
+            </button>
+        </form>
+        <p class="footer-text"><i class="bi bi-shield-lock-fill"></i> Acceso restringido · v3.0</p>
+    </div>
+</body>
+</html>
 EOF_LOGIN
 
     cat > /opt/hex-webpanel/templates/dashboard.html <<'EOF_DASH'
-<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Hex Dashboard</title>
-<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-<style>body{background-color:#121212;color:#e0e0e0}.card{background-color:#1e1e1e;border:1px solid #333}.text-success{color:#00c853!important}.table{color:#e0e0e0}.table-dark{background-color:#1e1e1e}</style></head>
-<body><nav class="navbar navbar-dark bg-dark border-bottom border-secondary"><div class="container-fluid">
-<span class="navbar-brand mb-0 h1">🚀 Hex Web Panel</span><a href="/logout" class="btn btn-outline-danger btn-sm">Cerrar Sesión</a></div></nav>
-<div class="container mt-4">{% with messages = get_flashed_messages() %}{% if messages %}<div class="alert alert-success">{{ messages[0] }}</div>{% endif %}{% endwith %}
-<div class="row mb-4">
-<div class="col-md-3"><div class="card p-3 text-center"><h5 class="text-success">BHTTP</h5><h2>{{ stats.bhttp }} <small class="text-muted">Puertos</small></h2><a href="/restart_service/bhttp" class="btn btn-sm btn-outline-success mt-2">Reiniciar</a></div></div>
-<div class="col-md-3"><div class="card p-3 text-center"><h5 class="text-info">HCR</h5><h2>{{ stats.hcr }} <small class="text-muted">Puertos</small></h2><a href="/restart_service/hcr" class="btn btn-sm btn-outline-info mt-2">Reiniciar</a></div></div>
-<div class="col-md-3"><div class="card p-3 text-center"><h5 class="text-warning">UDPGW</h5><h2>{{ stats.udpgw }} <small class="text-muted">Puertos</small></h2><a href="/restart_service/udpgw" class="btn btn-sm btn-outline-warning mt-2">Reiniciar</a></div></div>
-<div class="col-md-3"><div class="card p-3 text-center"><h5 class="text-primary">Usuarios</h5><h2>{{ stats.users }}</h2></div></div></div>
-<div class="row"><div class="col-md-4"><div class="card p-3"><h5 class="mb-3">➕ Agregar Usuario</h5>
-<form action="/add_user" method="POST"><div class="mb-2"><input type="text" name="username" class="form-control bg-dark text-light" placeholder="Usuario" required></div>
-<div class="mb-2"><input type="text" name="password" class="form-control bg-dark text-light" placeholder="Contraseña" required></div>
-<div class="mb-2"><input type="number" name="days" class="form-control bg-dark text-light" placeholder="Días" required></div>
-<button type="submit" class="btn btn-success w-100">Crear Usuario</button></form></div></div>
-<div class="col-md-8"><div class="card p-3"><h5 class="mb-3">👥 Usuarios Activos</h5><div class="table-responsive">
-<table class="table table-dark table-hover"><thead><tr><th>Usuario</th><th>Expiración</th><th>Acción</th></tr></thead><tbody>
-{% for u in users %}<tr><td>{{ u.user }}</td><td>{{ u.exp }}</td><td><a href="/delete_user/{{ u.user }}" class="btn btn-sm btn-danger" onclick="return confirm('¿Eliminar?')">🗑️</a></td></tr>{% else %}
-<tr><td colspan="3" class="text-center text-muted">No hay usuarios</td></tr>{% endfor %}</tbody></table></div></div></div></div></div></body></html>
+<!DOCTYPE html>
+<html lang="es" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hex Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <style>
+        body { background-color: #121212; color: #e0e0e0; }
+        .card { background-color: #1e1e1e; border: 1px solid #333; transition: transform 0.2s ease; }
+        .card:hover { transform: translateY(-2px); }
+        .text-success { color: #00c853 !important; }
+        .alert { position: relative; z-index: 1000; }
+        .btn-add-user {
+            background: linear-gradient(135deg, #00c853, #00e676);
+            border: none; color: #fff; font-weight: 600;
+            padding: 12px 24px; border-radius: 10px;
+            transition: all 0.3s ease;
+        }
+        .btn-add-user:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(0, 200, 83, 0.4);
+            color: #fff;
+        }
+        .modal-content { background: #1e1e1e; border: 1px solid #333; border-radius: 15px; }
+        .modal-header {
+            border-bottom: 1px solid #333;
+            background: linear-gradient(135deg, rgba(0, 200, 83, 0.1), transparent);
+            border-radius: 15px 15px 0 0;
+        }
+        .modal-title { color: #00c853; font-weight: 600; }
+        .modal-body .form-control {
+            background: #121212; border: 1px solid #333;
+            color: #e0e0e0; border-radius: 8px;
+        }
+        .modal-body .form-control:focus {
+            border-color: #00c853;
+            box-shadow: 0 0 0 3px rgba(0, 200, 83, 0.2);
+            background: #121212; color: #e0e0e0;
+        }
+        .modal-body label { color: #8b8b9e; font-size: 13px; font-weight: 500; }
+        .btn-close-white { filter: invert(1); }
+        .service-icon {
+            width: 40px; height: 40px; border-radius: 10px;
+            display: inline-flex; align-items: center; justify-content: center;
+            margin-right: 10px; font-size: 20px;
+        }
+        .icon-bhttp { background: rgba(0, 200, 83, 0.15); color: #00c853; }
+        .icon-hcr { background: rgba(0, 188, 212, 0.15); color: #00bcd4; }
+        .icon-udpgw { background: rgba(255, 193, 7, 0.15); color: #ffc107; }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-dark bg-dark border-bottom border-secondary sticky-top">
+        <div class="container-fluid">
+            <span class="navbar-brand mb-0 h1"><i class="bi bi-hexagon-fill text-success"></i> Hex Web Panel</span>
+            <a href="/logout" class="btn btn-outline-danger btn-sm"><i class="bi bi-box-arrow-right"></i> Salir</a>
+        </div>
+    </nav>
+
+    <div class="container mt-3 mt-md-4">
+        {% with messages = get_flashed_messages() %}
+          {% if messages %}
+            {% for msg in messages %}
+              <div class="alert alert-{% if 'error' in msg.lower() or '⚠' in msg %}warning{% else %}success{% endif %} alert-dismissible fade show" role="alert">
+                {{ msg }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+              </div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+
+        <h5 class="mb-3"><i class="bi bi-hdd-network"></i> Servicios Activos</h5>
+        <div class="row g-3 mb-4">
+            <div class="col-12 col-md-6 col-lg-4">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <h5 class="card-title mb-0 d-flex align-items-center">
+                                <span class="service-icon icon-bhttp"><i class="bi bi-globe"></i></span>
+                                <span class="text-success">BHTTP</span>
+                            </h5>
+                            <span class="badge bg-success">{{ stats.bhttp_active }}/{{ stats.bhttp_ports|length }}</span>
+                        </div>
+                        <div class="mb-3">
+                            <small class="text-muted">Puertos:</small>
+                            <div class="d-flex flex-wrap gap-1 mt-1">
+                                {% for p in stats.bhttp_ports %}<span class="badge bg-secondary">{{ p }}</span>{% else %}<span class="text-muted small">Ninguno</span>{% endfor %}
+                            </div>
+                        </div>
+                        <div class="d-flex gap-2">
+                            <a href="/control_service/bhttp/start" class="btn btn-sm btn-outline-success flex-fill" onclick="return confirm('¿Iniciar BHTTP?')"><i class="bi bi-play-fill"></i> Iniciar</a>
+                            <a href="/control_service/bhttp/stop" class="btn btn-sm btn-outline-warning flex-fill" onclick="return confirm('¿Detener BHTTP?')"><i class="bi bi-stop-fill"></i> Detener</a>
+                            <a href="/control_service/bhttp/restart" class="btn btn-sm btn-outline-info flex-fill" onclick="return confirm('¿Reiniciar BHTTP?')"><i class="bi bi-arrow-clockwise"></i></a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-12 col-md-6 col-lg-4">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <h5 class="card-title mb-0 d-flex align-items-center">
+                                <span class="service-icon icon-hcr"><i class="bi bi-shield-lock"></i></span>
+                                <span class="text-info">HCR</span>
+                            </h5>
+                            <span class="badge bg-info text-dark">{{ stats.hcr_active }}/{{ stats.hcr_ports|length }}</span>
+                        </div>
+                        <div class="mb-3">
+                            <small class="text-muted">Puertos:</small>
+                            <div class="d-flex flex-wrap gap-1 mt-1">
+                                {% for p in stats.hcr_ports %}<span class="badge bg-secondary">{{ p }}</span>{% else %}<span class="text-muted small">Ninguno</span>{% endfor %}
+                            </div>
+                        </div>
+                        <div class="d-flex gap-2">
+                            <a href="/control_service/hcr/start" class="btn btn-sm btn-outline-success flex-fill" onclick="return confirm('¿Iniciar HCR?')"><i class="bi bi-play-fill"></i> Iniciar</a>
+                            <a href="/control_service/hcr/stop" class="btn btn-sm btn-outline-warning flex-fill" onclick="return confirm('¿Detener HCR?')"><i class="bi bi-stop-fill"></i> Detener</a>
+                            <a href="/control_service/hcr/restart" class="btn btn-sm btn-outline-info flex-fill" onclick="return confirm('¿Reiniciar HCR?')"><i class="bi bi-arrow-clockwise"></i></a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-12 col-md-6 col-lg-4">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <h5 class="card-title mb-0 d-flex align-items-center">
+                                <span class="service-icon icon-udpgw"><i class="bi bi-wifi"></i></span>
+                                <span class="text-warning">UDPGW</span>
+                            </h5>
+                            <span class="badge bg-warning text-dark">{{ stats.udpgw_active }}/{{ stats.udpgw_ports|length }}</span>
+                        </div>
+                        <div class="mb-3">
+                            <small class="text-muted">Puertos:</small>
+                            <div class="d-flex flex-wrap gap-1 mt-1">
+                                {% for p in stats.udpgw_ports %}<span class="badge bg-secondary">{{ p }}</span>{% else %}<span class="text-muted small">Ninguno</span>{% endfor %}
+                            </div>
+                        </div>
+                        <div class="d-flex gap-2">
+                            <a href="/control_service/udpgw/start" class="btn btn-sm btn-outline-success flex-fill" onclick="return confirm('¿Iniciar UDPGW?')"><i class="bi bi-play-fill"></i> Iniciar</a>
+                            <a href="/control_service/udpgw/stop" class="btn btn-sm btn-outline-warning flex-fill" onclick="return confirm('¿Detener UDPGW?')"><i class="bi bi-stop-fill"></i> Detener</a>
+                            <a href="/control_service/udpgw/restart" class="btn btn-sm btn-outline-info flex-fill" onclick="return confirm('¿Reiniciar UDPGW?')"><i class="bi bi-arrow-clockwise"></i></a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row g-3">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-body">
+                        <div class="d-flex flex-column flex-sm-row justify-content-between align-items-start align-items-sm-center mb-3 gap-2">
+                            <h5 class="card-title mb-0">
+                                <i class="bi bi-people-fill text-success"></i> Usuarios Activos 
+                                <span class="badge bg-secondary ms-1">{{ stats.users }}</span>
+                            </h5>
+                            <button type="button" class="btn btn-add-user" data-bs-toggle="modal" data-bs-target="#addUserModal">
+                                <i class="bi bi-person-plus-fill me-1"></i> Agregar Usuario
+                            </button>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table table-dark table-hover table-sm align-middle mb-0">
+                                <thead>
+                                    <tr>
+                                        <th><i class="bi bi-person-circle"></i> Usuario</th>
+                                        <th><i class="bi bi-calendar-event"></i> Expiración</th>
+                                        <th class="text-end"><i class="bi bi-gear"></i> Acción</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for u in users %}
+                                    <tr>
+                                        <td><strong>{{ u.user }}</strong></td>
+                                        <td><span class="badge bg-secondary">{{ u.exp }}</span></td>
+                                        <td class="text-end">
+                                            <a href="/delete_user/{{ u.user }}" class="btn btn-sm btn-danger" onclick="return confirm('¿Eliminar a {{ u.user }}?');">
+                                                <i class="bi bi-trash"></i> <span class="d-none d-sm-inline">Eliminar</span>
+                                            </a>
+                                        </td>
+                                    </tr>
+                                    {% else %}
+                                    <tr><td colspan="3" class="text-center text-muted py-4">
+                                        <i class="bi bi-inbox" style="font-size: 2rem;"></i><br>
+                                        No hay usuarios registrados. Haz clic en "Agregar Usuario" para comenzar.
+                                    </td></tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="addUserModal" tabindex="-1" aria-labelledby="addUserModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="addUserModalLabel">
+                        <i class="bi bi-person-plus-fill"></i> Crear Nuevo Usuario
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <form action="/add_user" method="POST" id="addUserForm">
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label for="username" class="form-label"><i class="bi bi-person"></i> Nombre de usuario</label>
+                            <input type="text" class="form-control" id="username" name="username" 
+                                   placeholder="ej: juan_perez" required pattern="[a-z0-9_-]+" 
+                                   title="Solo letras minúsculas, números, guiones y guiones bajos"
+                                   autocomplete="off">
+                            <small class="text-muted">Solo minúsculas, números, _ y -</small>
+                        </div>
+                        <div class="mb-3">
+                            <label for="password" class="form-label"><i class="bi bi-key"></i> Contraseña</label>
+                            <input type="text" class="form-control" id="password" name="password" 
+                                   placeholder="Contraseña segura" required autocomplete="off">
+                        </div>
+                        <div class="mb-3">
+                            <label for="days" class="form-label"><i class="bi bi-calendar3"></i> Días de validez</label>
+                            <input type="number" class="form-control" id="days" name="days" 
+                                   placeholder="30" min="1" value="30" required>
+                            <small class="text-muted">El usuario expirará automáticamente después de estos días</small>
+                        </div>
+                        <div class="alert alert-info border-0 mb-0" style="background: rgba(0, 188, 212, 0.1); color: #4dd0e1;">
+                            <i class="bi bi-info-circle-fill me-2"></i>
+                            <small>Se creará un usuario del sistema con acceso SSH y fecha de expiración automática.</small>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                            <i class="bi bi-x-circle"></i> Cancelar
+                        </button>
+                        <button type="submit" class="btn btn-success">
+                            <i class="bi bi-check-circle-fill"></i> Crear Usuario
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
 EOF_DASH
 
     ui_info "Configurando servicio systemd..."
@@ -426,6 +916,7 @@ EOF
         ui_ok "Panel Web instalado y activo"
         ui_fila "  ${BOLD}URL:${NC} ${CYAN}http://$(hostname -I | awk '{print $1}'):9000${NC}"
         ui_fila "  ${BOLD}Pass:${NC} ${YELLOW}HexAdmin2026${NC} (Cámbiala en el menú)"
+        ui_fila "  ${BOLD}Diseño:${NC} ${GREEN}Moderno con Modal de usuarios${NC}"
     else
         ui_error "El panel no pudo iniciar. Revisa los logs."
     fi
