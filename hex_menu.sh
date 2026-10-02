@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ═══════════════════════════════════════════════════════════════
-#  HEX MANAGER - MENÚ DE GESTIÓN (Múltiples Puertos)
+#  HEX MANAGER - MENÚ DE GESTIÓN COMPLETO (v2.1 - Corregido)
 #  Repositorio: https://github.com/rogellevi/HCR_BHTTP
 # ═══════════════════════════════════════════════════════════════
 
@@ -9,15 +9,14 @@ RED='\033[38;5;203m'; GREEN='\033[38;5;84m'; YELLOW='\033[38;5;221m'
 CYAN='\033[38;5;51m'; WHITE='\033[38;5;255m'; NC='\033[0m'
 BOLD='\033[1m'; ACC='\033[38;5;44m'; GRIS='\033[38;5;245m'
 
-USER_DB="/etc/hex/users.txt"
-USER_GROUP="hexusers"
 BHTTP_PORTS_CONF="/etc/hex/bhttp_ports.conf"
 HCR_PORTS_CONF="/etc/hex/hcr_ports.conf"
 UDPGW_PORTS_CONF="/etc/hex/udpgw_ports.conf"
+USER_DB="/etc/hex/users.txt"
+USER_GROUP="hexusers"
 CLEANUP_SCRIPT="/usr/local/bin/hex_cleanup.sh"
 CLEANUP_LOG="/var/log/hex-cleanup.log"
 WEBPANEL_SERVICE="hex-webpanel.service"
-WEBPANEL_PORT=9000
 
 mkdir -p /etc/hex
 touch "$USER_DB" && chmod 600 "$USER_DB"
@@ -49,6 +48,9 @@ fi
 cron_active=$(crontab -l 2>/dev/null | grep -c "hex_cleanup.sh")
 [ "$cron_active" -eq 0 ] && (crontab -l 2>/dev/null; echo "0 3 * * * $CLEANUP_SCRIPT") | crontab -
 
+# ═══════════════════════════════════════════════════════════════
+#  FUNCIONES DE INTERFAZ DE USUARIO (UI)
+# ═══════════════════════════════════════════════════════════════
 pause_return() { echo ""; echo -e "  ${CYAN}Presiona ENTER para continuar...${NC}"; read -r; }
 ui_top() { echo -e "${ACC}╔════════════════════════════════════════════════════════════╗${NC}"; }
 ui_sep() { echo -e "${ACC}╠════════════════════════════════════════════════════════════╣${NC}"; }
@@ -56,8 +58,10 @@ ui_bot() { echo -e "${ACC}╚═════════════════
 ui_fila() { echo -e "${ACC}║${NC} $1 ${ACC}║${NC}"; }
 ui_titulo() { printf "${ACC}║${NC}                     ${WHITE}${BOLD}%s${NC}                     ${ACC}║${NC}\n" "$1"; }
 ui_opcion() { printf "     ${CYAN}[${NC}${YELLOW}$1${NC}${CYAN}]${NC}  $2\n"; }
+ui_info() { echo -e "     ${CYAN}ℹ${NC} ${GRIS}$1${NC}"; }
+ui_ok() { echo -e "     ${GREEN}✓${NC} ${WHITE}$1${NC}"; }
+ui_error() { echo -e "     ${RED}✗${NC} ${RED}$1${NC}"; }
 
-# Función auxiliar para obtener estado de puertos
 get_svc_status() {
     local svc=$1 conf=$2
     local total=0 active=0
@@ -81,16 +85,16 @@ menu_principal() {
     udpgw_st=$(get_svc_status "udpgw" "$UDPGW_PORTS_CONF")
     [ "$cron_active" -gt 0 ] && cleanup_status="${GREEN}● ACTIVO${NC}" || cleanup_status="${RED}● INACTIVO${NC}"
     
-    # Estado del Panel Web
     webpanel_state=$(systemctl is-active $WEBPANEL_SERVICE 2>/dev/null || echo "inactivo")
-    [ "$webpanel_state" = "active" ] && webpanel_status="${GREEN}● ACTIVO${NC}" || webpanel_status="${RED}● INACTIVO${NC}"
+    [ -f "/opt/hex-webpanel/app.py" ] && [ "$webpanel_state" = "active" ] && webpanel_status="${GREEN}● ACTIVO${NC}" || webpanel_status="${RED}● INACTIVO${NC}"
+    [ ! -f "/opt/hex-webpanel/app.py" ] && webpanel_status="${YELLOW}● NO INSTALADO${NC}"
     
     ui_fila ""
     ui_fila "  ${CYAN}BHTTP${NC}     - $bhttp_st"
     ui_fila "  ${CYAN}HCR${NC}       - $hcr_st"
     ui_fila "  ${CYAN}UDPGW${NC}     - $udpgw_st"
-    ui_fila "  ${CYAN}WEB PANEL${NC} - Puerto $WEBPANEL_PORT     $webpanel_status"
-    ui_fila "  ${CYAN}LIMPIADOR${NC} - Diario 03:00       $cleanup_status"
+    ui_fila "  ${CYAN}WEB PANEL${NC} - Puerto 9000     $webpanel_status"
+    ui_fila "  ${CYAN}LIMPIADOR${NC} - Diario 03:00    $cleanup_status"
     ui_fila ""; ui_sep
     
     ui_opcion "1" "Gestionar BHTTP"
@@ -102,7 +106,7 @@ menu_principal() {
     ui_opcion "7" "Listar usuarios activos"
     ui_opcion "8" "Limpieza automática"
     ui_opcion "9" "Ver logs"
-    ui_opcion "10" "Desinstalar"
+    ui_opcion "10" "Desinstalar todo"
     ui_opcion "0" "Salir"
     
     ui_bot; echo ""
@@ -119,7 +123,6 @@ menu_principal() {
     esac
 }
 
-# Menú genérico reutilizable para BHTTP, HCR y UDPGW
 menu_generico() {
     local svc=$1 title=$2 conf=$3 proto=$4
     while true; do
@@ -174,7 +177,7 @@ generic_add_port() {
     
     echo "$new_port" >> "$conf"
     iptables -I INPUT -p $proto --dport $new_port -j ACCEPT 2>/dev/null
-    [ "$proto" == "udp" ] && iptables -I INPUT -p tcp --dport $new_port -j ACCEPT 2>/dev/null # UDPGW necesita ambos a veces
+    [ "$proto" == "udp" ] && iptables -I INPUT -p tcp --dport $new_port -j ACCEPT 2>/dev/null
     command -v ufw >/dev/null 2>&1 && { ufw allow $new_port/$proto >/dev/null 2>&1; [ "$proto" == "udp" ] && ufw allow $new_port/tcp >/dev/null 2>&1; }
     
     systemctl enable "${svc}@${new_port}.service" >/dev/null 2>&1
@@ -246,125 +249,9 @@ generic_control_individual() {
     esac
 }
 
-# --- FUNCIONES DE USUARIOS (Sin cambios, optimizadas) ---
-agregar_usuario() {
-    clear; ui_top; ui_titulo "AGREGAR USUARIO"; ui_sep
-    getent group "$USER_GROUP" >/dev/null 2>&1 || groupadd "$USER_GROUP" 2>/dev/null
-    echo ""; echo -ne "  ${WHITE}Usuario:${NC} "; read -r new_user
-    [[ "$new_user" =~ ^[a-z_][a-z0-9_-]*$ ]] || { echo -e "  ${RED}✗ Nombre inválido${NC}"; pause_return; menu_principal; return; }
-    id "$new_user" >/dev/null 2>&1 && { echo -e "  ${RED}✗ El usuario ya existe${NC}"; pause_return; menu_principal; return; }
-    echo -ne "  ${WHITE}Contraseña:${NC} "; read -rs new_pass; echo ""
-    [ -z "$new_pass" ] && { echo -e "  ${RED}✗ Contraseña vacía${NC}"; pause_return; menu_principal; return; }
-    echo -ne "  ${WHITE}Validez (días):${NC} "; read -r days
-    [[ "$days" =~ ^[0-9]+$ ]] && [ "$days" -gt 0 ] || { echo -e "  ${RED}✗ Días inválidos${NC}"; pause_return; menu_principal; return; }
-    
-    exp_date=$(date -d "+${days} days" +"%Y-%m-%d")
-    useradd -m -s /bin/bash -G "$USER_GROUP" "$new_user" 2>/dev/null
-    echo "$new_user:$new_pass" | chpasswd
-    chage -E "$exp_date" "$new_user" && usermod -e "$exp_date" "$new_user"
-    echo "${new_user}:${new_pass}:${exp_date}" >> "$USER_DB"
-    
-    echo ""; echo -e "  ${GREEN}✓ Usuario creado exitosamente${NC}"
-    echo -e "  ${BOLD}IP:${NC} $(hostname -I | awk '{print $1}')"
-    echo -e "  ${BOLD}Usuario:${NC} ${YELLOW}${new_user}${NC} | ${BOLD}Pass:${NC} ${YELLOW}${new_pass}${NC} | ${BOLD}Expira:${NC} ${YELLOW}${exp_date}${NC}"; echo ""
-    pause_return; menu_principal
-}
-
-eliminar_usuario() {
-    clear; ui_top; ui_titulo "ELIMINAR USUARIO"; ui_sep
-    [ ! -s "$USER_DB" ] && { echo -e "  ${YELLOW}No hay usuarios${NC}"; pause_return; menu_principal; return; }
-    echo ""; echo -e "  ${CYAN}Usuarios activos:${NC}"; echo ""
-    cat -n "$USER_DB" | awk -F: '{printf "    ${YELLOW}[%s]${NC} %s (Exp: %s)\n", NR, $1, $3}' | sed "s/\${YELLOW}/\x1b[38;5;221m/g; s/\${NC}/\x1b[0m/g"; echo ""
-    echo -ne "  ${WHITE}Usuario a eliminar:${NC} "; read -r del_user
-    id "$del_user" >/dev/null 2>&1 || { echo -e "  ${RED}✗ No existe${NC}"; pause_return; menu_principal; return; }
-    userdel -r "$del_user" 2>/dev/null; sed -i "/^$del_user:/d" "$USER_DB"
-    echo -e "  ${GREEN}✓ Usuario eliminado${NC}"; pause_return; menu_principal
-}
-
-listar_usuarios() {
-    clear; ui_top; ui_titulo "USUARIOS ACTIVOS"; ui_sep
-    [ ! -s "$USER_DB" ] && { echo ""; echo -e "  ${YELLOW}⚠ No hay usuarios registrados${NC}"; ui_sep; ui_fila ""; ui_fila "  ${GRIS}Usa la opción 4 para agregar usuarios${NC}"; ui_fila ""; pause_return; menu_principal; return; }
-    
-    total_users=$(wc -l < "$USER_DB"); active_users=0; expired_users=0; expiring_soon=0
-    current_timestamp=$(date +%s)
-    
-    echo ""; echo -e "  ${CYAN}╔═══════════════════════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "  ${CYAN}║${NC} ${WHITE}${BOLD}#   Usuario          Contraseña      Expira          Días Rest.  Estado${NC}          ${CYAN}║${NC}"
-    echo -e "  ${CYAN}╠═══════════════════════════════════════════════════════════════════════════════╣${NC}"
-    
-    counter=1
-    while IFS=: read -r user pass exp; do
-        if id "$user" >/dev/null 2>&1; then
-            exp_timestamp=$(date -d "$exp" +%s 2>/dev/null || echo "0")
-            days_left=$(( (exp_timestamp - current_timestamp) / 86400 ))
-            
-            if [ "$exp_timestamp" -lt "$current_timestamp" ]; then
-                status="${RED}● EXPIRADO${NC}"; days_color="${RED}"; ((expired_users++))
-            elif [ "$days_left" -le 3 ]; then
-                status="${YELLOW}● POR EXPIRAR${NC}"; days_color="${YELLOW}"; ((expiring_soon++))
-            else
-                status="${GREEN}● ACTIVO${NC}"; days_color="${GREEN}"; ((active_users++))
-            fi
-            
-            [ ${#pass} -gt 3 ] && pass_masked="${pass:0:3}***" || pass_masked="***"
-            printf "  ${CYAN}║${NC} ${YELLOW}%-3s${NC} ${WHITE}%-16s${NC} ${GRIS}%-15s${NC} ${WHITE}%-15s${NC} ${days_color}%-11s${NC} %b\n" "$counter" "$user" "$pass_masked" "$exp" "$days_left" "$status"
-            ((counter++))
-        fi
-    done < "$USER_DB"
-    
-    echo -e "  ${CYAN}╚═══════════════════════════════════════════════════════════════════════════════╝${NC}"; echo ""
-    ui_sep; echo ""
-    echo -e "  ${BOLD}RESUMEN:${NC}"; echo -e "  Total: ${WHITE}$total_users${NC} | Activos: ${GREEN}$active_users${NC} | Por expirar: ${YELLOW}$expiring_soon${NC} | Expirados: ${RED}$expired_users${NC}"; echo ""
-    ui_sep; ui_fila ""; pause_return; menu_principal
-}
-
-gestionar_limpieza() {
-    clear; ui_top; ui_titulo "LIMPIEZA AUTOMÁTICA"; ui_sep; ui_fila ""
-    cron_active=$(crontab -l 2>/dev/null | grep -c "hex_cleanup.sh")
-    
-    if [ "$cron_active" -gt 0 ]; then
-        ui_fila "  Estado: ${GREEN}● ACTIVO${NC}"; ui_fila "  ${GRIS}Se ejecuta diariamente a las 03:00 AM${NC}"; ui_fila ""
-        ui_sep; ui_fila ""
-        ui_opcion "1" "Desactivar limpieza automática"; ui_opcion "2" "Ejecutar limpieza manual AHORA"; ui_opcion "3" "Ver log de limpieza"; ui_opcion "0" "Atrás"
-        ui_bot; echo ""; echo -ne "  ${CYAN}►${NC} Selecciona opción: "; read -r opt
-        case "$opt" in
-            1) crontab -l 2>/dev/null | grep -v "hex_cleanup.sh" | crontab -; echo -e "  ${GREEN}✓ Desactivada${NC}"; pause_return ;;
-            2) echo -e "  ${CYAN}Ejecutando...${NC}"; $CLEANUP_SCRIPT; echo -e "  ${GREEN}✓ Completada${NC}"; pause_return ;;
-            3) [ -f "$CLEANUP_LOG" ] && tail -50 "$CLEANUP_LOG" | less || { echo -e "  ${YELLOW}Sin log${NC}"; pause_return; } ;;
-            0) ;; *) echo -e "  ${RED}✗ Inválida${NC}"; pause_return ;;
-        esac
-    else
-        ui_fila "  Estado: ${RED}● INACTIVO${NC}"; ui_fila "  ${GRIS}Los usuarios expirados NO se eliminan automáticamente${NC}"; ui_fila ""
-        ui_sep; ui_fila ""
-        ui_opcion "1" "Activar limpieza automática"; ui_opcion "2" "Ejecutar limpieza manual AHORA"; ui_opcion "3" "Ver log de limpieza"; ui_opcion "0" "Atrás"
-        ui_bot; echo ""; echo -ne "  ${CYAN}►${NC} Selecciona opción: "; read -r opt
-        case "$opt" in
-            1) (crontab -l 2>/dev/null; echo "0 3 * * * $CLEANUP_SCRIPT") | crontab -; echo -e "  ${GREEN}✓ Activada${NC}"; pause_return ;;
-            2) echo -e "  ${CYAN}Ejecutando...${NC}"; $CLEANUP_SCRIPT; echo -e "  ${GREEN}✓ Completada${NC}"; pause_return ;;
-            3) [ -f "$CLEANUP_LOG" ] && tail -50 "$CLEANUP_LOG" | less || { echo -e "  ${YELLOW}Sin log${NC}"; pause_return; } ;;
-            0) ;; *) echo -e "  ${RED}✗ Inválida${NC}"; pause_return ;;
-        esac
-    fi
-    menu_principal
-}
-
-ver_logs() {
-    clear; ui_top; ui_titulo "VER LOGS"; ui_sep; ui_fila ""
-    ui_opcion "1" "BHTTP (últimas 50)"; ui_opcion "2" "HCR (últimas 50)"; ui_opcion "3" "UDPGW (todos)"
-    ui_opcion "4" "BHTTP (todas)"; ui_opcion "5" "HCR (todas)"; ui_opcion "6" "Limpieza automática"; ui_opcion "0" "Atrás"
-    ui_bot; echo ""; echo -ne "  ${CYAN}►${NC} Selecciona opción: "; read -r opt
-    
-    case "$opt" in
-        1) echo ""; journalctl -u "bhttp@*.service" -n 50 --no-pager; pause_return ;;
-        2) echo ""; journalctl -u "hcr@*.service" -n 50 --no-pager; pause_return ;;
-        3) echo ""; [ -f "$UDPGW_PORTS_CONF" ] && while read -r port; do [ -z "$port" ] && continue; echo -e "${YELLOW}═══ Puerto $port ═══${NC}"; journalctl -u "udpgw@${port}.service" -n 20 --no-pager; echo ""; done < "$UDPGW_PORTS_CONF" || echo -e "  ${YELLOW}Sin puertos${NC}"; pause_return ;;
-        4) journalctl -u "bhttp@*.service" --no-pager | less ;;
-        5) journalctl -u "hcr@*.service" --no-pager | less ;;
-        6) [ -f "$CLEANUP_LOG" ] && tail -100 "$CLEANUP_LOG" | less || { echo -e "  ${YELLOW}Sin log${NC}"; pause_return; } ;;
-        0) ;; *) echo -e "  ${RED}✗ Inválida${NC}"; pause_return ;;
-    esac
-    menu_principal
-}
+# ═══════════════════════════════════════════════════════════════
+#  GESTIÓN DEL PANEL WEB (INTELIGENTE)
+# ═══════════════════════════════════════════════════════════════
 
 instalar_panel_web_automatico() {
     clear; ui_top; ui_titulo "INSTALANDO PANEL WEB"; ui_sep; ui_fila ""
@@ -382,7 +269,6 @@ instalar_panel_web_automatico() {
     
     ui_info "Creando archivos de la aplicación..."
     
-    # ⚠️ IMPORTANTE: Las comillas simples en 'EOF_APP' evitan que Bash corrompa el código Python
     cat > /opt/hex-webpanel/app.py <<'EOF_APP'
 import os, subprocess, datetime
 from flask import Flask, render_template, request, redirect, url_for, flash
@@ -550,19 +436,15 @@ gestionar_webpanel() {
     while true; do
         clear; ui_top; ui_titulo "GESTIÓN PANEL WEB"; ui_sep
         
-        # Verificar si el panel está instalado
         if [ ! -f "/opt/hex-webpanel/app.py" ]; then
             ui_fila "  Estado: ${RED}● NO INSTALADO${NC}"
             ui_fila "  ${GRIS}El panel web aún no se ha configurado en este servidor${NC}"
-            ui_sep
-            ui_fila ""
+            ui_sep; ui_fila ""
             
             ui_opcion "1" "Instalar Panel Web (Automático)"
             ui_opcion "0" "Atrás"
             
-            ui_bot
-            echo ""
-            echo -ne "  ${CYAN}►${NC} Selecciona opción: "; read -r opt
+            ui_bot; echo ""; echo -ne "  ${CYAN}►${NC} Selecciona opción: "; read -r opt
             
             case "$opt" in
                 1) instalar_panel_web_automatico ;;
@@ -570,14 +452,12 @@ gestionar_webpanel() {
                 *) echo -e "  ${RED}✗ Opción inválida${NC}"; pause_return ;;
             esac
         else
-            # El panel YA está instalado
             webpanel_state=$(systemctl is-active hex-webpanel.service 2>/dev/null || echo "inactivo")
             [ "$webpanel_state" = "active" ] && webpanel_status="${GREEN}● ACTIVO${NC}" || webpanel_status="${RED}● INACTIVO${NC}"
             
             ui_fila "  Estado: $webpanel_status  │  Puerto: ${YELLOW}9000${NC}"
             ui_fila "  URL: ${CYAN}http://$(hostname -I | awk '{print $1}'):9000${NC}"
-            ui_sep
-            ui_fila ""
+            ui_sep; ui_fila ""
             
             ui_opcion "1" "Iniciar Panel Web"
             ui_opcion "2" "Detener Panel Web"
@@ -588,58 +468,28 @@ gestionar_webpanel() {
             ui_opcion "7" "Desinstalar Panel Web"
             ui_opcion "0" "Atrás"
             
-            ui_bot
-            echo ""
-            echo -ne "  ${CYAN}►${NC} Selecciona opción: "; read -r opt
+            ui_bot; echo ""; echo -ne "  ${CYAN}►${NC} Selecciona opción: "; read -r opt
             
             case "$opt" in
-                1)
-                    systemctl start hex-webpanel.service
-                    sleep 1
-                    systemctl is-active --quiet hex-webpanel.service && echo -e "  ${GREEN}✓ Panel Web iniciado${NC}" || echo -e "  ${RED}✗ Error al iniciar${NC}"
-                    pause_return
-                    ;;
-                2)
-                    systemctl stop hex-webpanel.service
-                    echo -e "  ${GREEN}✓ Panel Web detenido${NC}"
-                    pause_return
-                    ;;
-                3)
-                    systemctl restart hex-webpanel.service
-                    echo -e "  ${GREEN}✓ Panel Web reiniciado${NC}"
-                    pause_return
-                    ;;
-                4)
-                    echo ""
-                    systemctl status hex-webpanel.service --no-pager
-                    pause_return
-                    ;;
+                1) systemctl start hex-webpanel.service; sleep 1; systemctl is-active --quiet hex-webpanel.service && echo -e "  ${GREEN}✓ Panel Web iniciado${NC}" || echo -e "  ${RED}✗ Error al iniciar${NC}"; pause_return ;;
+                2) systemctl stop hex-webpanel.service; echo -e "  ${GREEN}✓ Panel Web detenido${NC}"; pause_return ;;
+                3) systemctl restart hex-webpanel.service; echo -e "  ${GREEN}✓ Panel Web reiniciado${NC}"; pause_return ;;
+                4) echo ""; systemctl status hex-webpanel.service --no-pager; pause_return ;;
                 5)
                     clear; ui_top; ui_titulo "CAMBIAR CONTRASEÑA"; ui_sep; ui_fila ""
                     echo -ne "  ${WHITE}Nueva contraseña:${NC} "; read -rs new_pass; echo ""
-                    if [ -z "$new_pass" ]; then
-                        echo -e "  ${RED}✗ La contraseña no puede estar vacía${NC}"
-                        pause_return; continue
-                    fi
+                    if [ -z "$new_pass" ]; then echo -e "  ${RED}✗ La contraseña no puede estar vacía${NC}"; pause_return; continue; fi
                     sed -i "s/ADMIN_PASSWORD = .*/ADMIN_PASSWORD = \"$new_pass\"/" /opt/hex-webpanel/app.py
                     systemctl restart hex-webpanel.service
-                    echo -e "  ${GREEN}✓ Contraseña actualizada${NC}"
-                    pause_return
+                    echo -e "  ${GREEN}✓ Contraseña actualizada${NC}"; pause_return
                     ;;
-                6)
-                    echo ""
-                    journalctl -u hex-webpanel.service -n 50 --no-pager
-                    pause_return
-                    ;;
+                6) echo ""; journalctl -u hex-webpanel.service -n 50 --no-pager; pause_return ;;
                 7)
                     echo -e "  ${CYAN}Desinstalando Panel Web...${NC}"
-                    systemctl stop hex-webpanel.service 2>/dev/null
-                    systemctl disable hex-webpanel.service 2>/dev/null
-                    rm -f /etc/systemd/system/hex-webpanel.service
-                    rm -rf /opt/hex-webpanel
+                    systemctl stop hex-webpanel.service 2>/dev/null; systemctl disable hex-webpanel.service 2>/dev/null
+                    rm -f /etc/systemd/system/hex-webpanel.service; rm -rf /opt/hex-webpanel
                     systemctl daemon-reload
-                    echo -e "  ${GREEN}✓ Panel Web desinstalado${NC}"
-                    pause_return
+                    echo -e "  ${GREEN}✓ Panel Web desinstalado${NC}"; pause_return
                     ;;
                 0) break ;;
                 *) echo -e "  ${RED}✗ Opción inválida${NC}"; pause_return ;;
@@ -649,8 +499,132 @@ gestionar_webpanel() {
     menu_principal
 }
 
+# ═══════════════════════════════════════════════════════════════
+#  GESTIÓN DE USUARIOS Y LIMPIEZA
+# ═══════════════════════════════════════════════════════════════
+
+agregar_usuario() {
+    clear; ui_top; ui_titulo "AGREGAR USUARIO"; ui_sep
+    getent group "$USER_GROUP" >/dev/null 2>&1 || groupadd "$USER_GROUP" 2>/dev/null
+    echo ""; echo -ne "  ${WHITE}Usuario:${NC} "; read -r new_user
+    [[ "$new_user" =~ ^[a-z_][a-z0-9_-]*$ ]] || { echo -e "  ${RED}✗ Nombre inválido${NC}"; pause_return; menu_principal; return; }
+    id "$new_user" >/dev/null 2>&1 && { echo -e "  ${RED}✗ El usuario ya existe${NC}"; pause_return; menu_principal; return; }
+    echo -ne "  ${WHITE}Contraseña:${NC} "; read -rs new_pass; echo ""
+    [ -z "$new_pass" ] && { echo -e "  ${RED}✗ Contraseña vacía${NC}"; pause_return; menu_principal; return; }
+    echo -ne "  ${WHITE}Validez (días):${NC} "; read -r days
+    [[ "$days" =~ ^[0-9]+$ ]] && [ "$days" -gt 0 ] || { echo -e "  ${RED}✗ Días inválidos${NC}"; pause_return; menu_principal; return; }
+    
+    exp_date=$(date -d "+${days} days" +"%Y-%m-%d")
+    useradd -m -s /bin/bash -G "$USER_GROUP" "$new_user" 2>/dev/null
+    echo "$new_user:$new_pass" | chpasswd
+    chage -E "$exp_date" "$new_user" && usermod -e "$exp_date" "$new_user"
+    echo "${new_user}:${new_pass}:${exp_date}" >> "$USER_DB"
+    
+    echo ""; echo -e "  ${GREEN}✓ Usuario creado exitosamente${NC}"
+    echo -e "  ${BOLD}IP:${NC} $(hostname -I | awk '{print $1}')"
+    echo -e "  ${BOLD}Usuario:${NC} ${YELLOW}${new_user}${NC} | ${BOLD}Pass:${NC} ${YELLOW}${new_pass}${NC} | ${BOLD}Expira:${NC} ${YELLOW}${exp_date}${NC}"; echo ""
+    pause_return; menu_principal
+}
+
+eliminar_usuario() {
+    clear; ui_top; ui_titulo "ELIMINAR USUARIO"; ui_sep
+    [ ! -s "$USER_DB" ] && { echo -e "  ${YELLOW}No hay usuarios${NC}"; pause_return; menu_principal; return; }
+    echo ""; echo -e "  ${CYAN}Usuarios activos:${NC}"; echo ""
+    cat -n "$USER_DB" | awk -F: '{printf "    ${YELLOW}[%s]${NC} %s (Exp: %s)\n", NR, $1, $3}' | sed "s/\${YELLOW}/\x1b[38;5;221m/g; s/\${NC}/\x1b[0m/g"; echo ""
+    echo -ne "  ${WHITE}Usuario a eliminar:${NC} "; read -r del_user
+    id "$del_user" >/dev/null 2>&1 || { echo -e "  ${RED}✗ No existe${NC}"; pause_return; menu_principal; return; }
+    userdel -r "$del_user" 2>/dev/null; sed -i "/^$del_user:/d" "$USER_DB"
+    echo -e "  ${GREEN}✓ Usuario eliminado${NC}"; pause_return; menu_principal
+}
+
+listar_usuarios() {
+    clear; ui_top; ui_titulo "USUARIOS ACTIVOS"; ui_sep
+    [ ! -s "$USER_DB" ] && { echo ""; echo -e "  ${YELLOW}⚠ No hay usuarios registrados${NC}"; ui_sep; ui_fila ""; ui_fila "  ${GRIS}Usa la opción 5 para agregar usuarios${NC}"; ui_fila ""; pause_return; menu_principal; return; }
+    
+    total_users=$(wc -l < "$USER_DB"); active_users=0; expired_users=0; expiring_soon=0
+    current_timestamp=$(date +%s)
+    
+    echo ""; echo -e "  ${CYAN}╔═══════════════════════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "  ${CYAN}║${NC} ${WHITE}${BOLD}#   Usuario          Contraseña      Expira          Días Rest.  Estado${NC}          ${CYAN}║${NC}"
+    echo -e "  ${CYAN}╠═══════════════════════════════════════════════════════════════════════════════╣${NC}"
+    
+    counter=1
+    while IFS=: read -r user pass exp; do
+        if id "$user" >/dev/null 2>&1; then
+            exp_timestamp=$(date -d "$exp" +%s 2>/dev/null || echo "0")
+            days_left=$(( (exp_timestamp - current_timestamp) / 86400 ))
+            
+            if [ "$exp_timestamp" -lt "$current_timestamp" ]; then
+                status="${RED}● EXPIRADO${NC}"; days_color="${RED}"; ((expired_users++))
+            elif [ "$days_left" -le 3 ]; then
+                status="${YELLOW}● POR EXPIRAR${NC}"; days_color="${YELLOW}"; ((expiring_soon++))
+            else
+                status="${GREEN}● ACTIVO${NC}"; days_color="${GREEN}"; ((active_users++))
+            fi
+            
+            [ ${#pass} -gt 3 ] && pass_masked="${pass:0:3}***" || pass_masked="***"
+            printf "  ${CYAN}║${NC} ${YELLOW}%-3s${NC} ${WHITE}%-16s${NC} ${GRIS}%-15s${NC} ${WHITE}%-15s${NC} ${days_color}%-11s${NC} %b\n" "$counter" "$user" "$pass_masked" "$exp" "$days_left" "$status"
+            ((counter++))
+        fi
+    done < "$USER_DB"
+    
+    echo -e "  ${CYAN}╚═══════════════════════════════════════════════════════════════════════════════╝${NC}"; echo ""
+    ui_sep; echo ""
+    echo -e "  ${BOLD}RESUMEN:${NC}"; echo -e "  Total: ${WHITE}$total_users${NC} | Activos: ${GREEN}$active_users${NC} | Por expirar: ${YELLOW}$expiring_soon${NC} | Expirados: ${RED}$expired_users${NC}"; echo ""
+    ui_sep; ui_fila ""; pause_return; menu_principal
+}
+
+gestionar_limpieza() {
+    clear; ui_top; ui_titulo "LIMPIEZA AUTOMÁTICA"; ui_sep; ui_fila ""
+    cron_active=$(crontab -l 2>/dev/null | grep -c "hex_cleanup.sh")
+    
+    if [ "$cron_active" -gt 0 ]; then
+        ui_fila "  Estado: ${GREEN}● ACTIVO${NC}"; ui_fila "  ${GRIS}Se ejecuta diariamente a las 03:00 AM${NC}"; ui_fila ""
+        ui_sep; ui_fila ""
+        ui_opcion "1" "Desactivar limpieza automática"; ui_opcion "2" "Ejecutar limpieza manual AHORA"; ui_opcion "3" "Ver log de limpieza"; ui_opcion "0" "Atrás"
+        ui_bot; echo ""; echo -ne "  ${CYAN}►${NC} Selecciona opción: "; read -r opt
+        case "$opt" in
+            1) crontab -l 2>/dev/null | grep -v "hex_cleanup.sh" | crontab -; echo -e "  ${GREEN}✓ Desactivada${NC}"; pause_return ;;
+            2) echo -e "  ${CYAN}Ejecutando...${NC}"; $CLEANUP_SCRIPT; echo -e "  ${GREEN}✓ Completada${NC}"; pause_return ;;
+            3) [ -f "$CLEANUP_LOG" ] && tail -50 "$CLEANUP_LOG" | less || { echo -e "  ${YELLOW}Sin log${NC}"; pause_return; } ;;
+            0) ;; *) echo -e "  ${RED}✗ Inválida${NC}"; pause_return ;;
+        esac
+    else
+        ui_fila "  Estado: ${RED}● INACTIVO${NC}"; ui_fila "  ${GRIS}Los usuarios expirados NO se eliminan automáticamente${NC}"; ui_fila ""
+        ui_sep; ui_fila ""
+        ui_opcion "1" "Activar limpieza automática"; ui_opcion "2" "Ejecutar limpieza manual AHORA"; ui_opcion "3" "Ver log de limpieza"; ui_opcion "0" "Atrás"
+        ui_bot; echo ""; echo -ne "  ${CYAN}►${NC} Selecciona opción: "; read -r opt
+        case "$opt" in
+            1) (crontab -l 2>/dev/null; echo "0 3 * * * $CLEANUP_SCRIPT") | crontab -; echo -e "  ${GREEN}✓ Activada${NC}"; pause_return ;;
+            2) echo -e "  ${CYAN}Ejecutando...${NC}"; $CLEANUP_SCRIPT; echo -e "  ${GREEN}✓ Completada${NC}"; pause_return ;;
+            3) [ -f "$CLEANUP_LOG" ] && tail -50 "$CLEANUP_LOG" | less || { echo -e "  ${YELLOW}Sin log${NC}"; pause_return; } ;;
+            0) ;; *) echo -e "  ${RED}✗ Inválida${NC}"; pause_return ;;
+        esac
+    fi
+    menu_principal
+}
+
+ver_logs() {
+    clear; ui_top; ui_titulo "VER LOGS"; ui_sep; ui_fila ""
+    ui_opcion "1" "BHTTP (últimas 50)"; ui_opcion "2" "HCR (últimas 50)"; ui_opcion "3" "UDPGW (todos)"
+    ui_opcion "4" "BHTTP (todas)"; ui_opcion "5" "HCR (todas)"; ui_opcion "6" "Limpieza automática"; ui_opcion "7" "Panel Web"; ui_opcion "0" "Atrás"
+    ui_bot; echo ""; echo -ne "  ${CYAN}►${NC} Selecciona opción: "; read -r opt
+    
+    case "$opt" in
+        1) echo ""; journalctl -u "bhttp@*.service" -n 50 --no-pager; pause_return ;;
+        2) echo ""; journalctl -u "hcr@*.service" -n 50 --no-pager; pause_return ;;
+        3) echo ""; [ -f "$UDPGW_PORTS_CONF" ] && while read -r port; do [ -z "$port" ] && continue; echo -e "${YELLOW}═══ Puerto $port ═══${NC}"; journalctl -u "udpgw@${port}.service" -n 20 --no-pager; echo ""; done < "$UDPGW_PORTS_CONF" || echo -e "  ${YELLOW}Sin puertos${NC}"; pause_return ;;
+        4) journalctl -u "bhttp@*.service" --no-pager | less ;;
+        5) journalctl -u "hcr@*.service" --no-pager | less ;;
+        6) [ -f "$CLEANUP_LOG" ] && tail -100 "$CLEANUP_LOG" | less || { echo -e "  ${YELLOW}Sin log${NC}"; pause_return; } ;;
+        7) echo ""; journalctl -u hex-webpanel.service -n 50 --no-pager; pause_return ;;
+        0) ;; *) echo -e "  ${RED}✗ Inválida${NC}"; pause_return ;;
+    esac
+    menu_principal
+}
+
 desinstalar() {
-    clear; ui_top; ui_titulo "DESINSTALAR"; ui_sep; ui_fila ""; ui_fila "  ${YELLOW}⚠${NC}  Estás a punto de desinstalar"; ui_fila ""; ui_sep
+    clear; ui_top; ui_titulo "DESINSTALAR TODO"; ui_sep; ui_fila ""; ui_fila "  ${YELLOW}⚠${NC}  Estás a punto de desinstalar TODO el sistema HEX"; ui_fila ""; ui_sep
     echo ""; echo -ne "  ${RED}✗ Escriba${NC} ${YELLOW}${BOLD}CONFIRMAR${NC} ${RED}para continuar:${NC} "; read -r confirm
     
     if [ "$confirm" = "CONFIRMAR" ]; then
@@ -660,25 +634,19 @@ desinstalar() {
             [ -f "$conf" ] && while read -r port; do [ -z "$port" ] && continue; systemctl stop "${svc}@${port}.service" 2>/dev/null || true; done < "$conf"
         done
         
-        echo -e "  ${CYAN}Eliminando archivos...${NC}"
-        rm -f /etc/systemd/system/bhttp@.service /etc/systemd/system/hcr@.service /etc/systemd/system/udpgw@.service
-        rm -rf /opt/bhttp /opt/hcr /opt/udpgw /etc/bhttp /etc/hcr /etc/hex
-        rm -f /usr/local/bin/hex_menu /usr/bin/hex_menu /usr/local/bin/hex_cleanup.sh /var/log/hex-cleanup.log
-        rm -f /etc/hex/bhttp_ports.conf /etc/hex/hcr_ports.conf /etc/hex/udpgw_ports.conf
-
-echo -e "  ${CYAN}Eliminando Panel Web...${NC}"
-systemctl stop hex-webpanel.service 2>/dev/null || true
-systemctl disable hex-webpanel.service 2>/dev/null || true
-rm -f /etc/systemd/system/hex-webpanel.service
-rm -rf /opt/hex-webpanel
-
-echo -e "  ${CYAN}Eliminando Panel Web...${NC}"
+        echo -e "  ${CYAN}Eliminando Panel Web...${NC}"
         systemctl stop hex-webpanel.service 2>/dev/null || true
         systemctl disable hex-webpanel.service 2>/dev/null || true
         rm -f /etc/systemd/system/hex-webpanel.service
         rm -rf /opt/hex-webpanel
         
-        echo -e "  ${CYAN}Eliminando usuarios hexusers...${NC}"
+        echo -e "  ${CYAN}Eliminando archivos del sistema...${NC}"
+        rm -f /etc/systemd/system/bhttp@.service /etc/systemd/system/hcr@.service /etc/systemd/system/udpgw@.service
+        rm -rf /opt/bhttp /opt/hcr /opt/udpgw /etc/bhttp /etc/hcr /etc/hex
+        rm -f /usr/local/bin/hex_menu /usr/bin/hex_menu /usr/local/bin/hex_cleanup.sh /var/log/hex-cleanup.log
+        rm -f /etc/hex/bhttp_ports.conf /etc/hex/hcr_ports.conf /etc/hex/udpgw_ports.conf
+        
+        echo -e "  ${CYAN}Eliminando usuarios del grupo hexusers...${NC}"
         getent group "$USER_GROUP" >/dev/null 2>&1 && { for user in $(getent group "$USER_GROUP" | cut -d: -f4 | tr ',' '\n'); do userdel -r "$user" 2>/dev/null; done; groupdel "$USER_GROUP" 2>/dev/null; }
         
         crontab -l 2>/dev/null | grep -v "hex_cleanup.sh" | crontab -
