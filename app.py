@@ -2,7 +2,6 @@ import os, subprocess, datetime, logging
 from flask import Flask, render_template, request, redirect, url_for, flash
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user
 
-# Configuración de logging
 logging.basicConfig(filename='/var/log/hex-webpanel.log', level=logging.INFO, 
                     format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -23,6 +22,17 @@ CHAGE = '/usr/bin/chage'
 GROUPADD = '/usr/sbin/groupadd'
 ID = '/usr/bin/id'
 GETENT = '/usr/bin/getent'
+
+# Archivo de configuración del puerto
+WEBPANEL_PORT_FILE = "/etc/hex/webpanel_port.conf"
+
+def get_webpanel_port():
+    try:
+        if os.path.exists(WEBPANEL_PORT_FILE):
+            return int(open(WEBPANEL_PORT_FILE).read().strip())
+    except:
+        pass
+    return 9000
 
 class User(UserMixin):
     def __init__(self, id): self.id = id
@@ -88,7 +98,8 @@ def dashboard():
             "bhttp_online": bhttp_active > 0,
             "hcr_online": hcr_active > 0,
             "udpgw_online": udpgw_active > 0,
-            "users": len(get_users())
+            "users": len(get_users()),
+            "webpanel_port": get_webpanel_port()
         }
         return render_template('dashboard.html', stats=stats, users=get_users())
     except Exception as e:
@@ -98,7 +109,7 @@ def dashboard():
             "bhttp_ports":[], "hcr_ports":[], "udpgw_ports":[],
             "bhttp_active":0, "hcr_active":0, "udpgw_active":0,
             "bhttp_online":False, "hcr_online":False, "udpgw_online":False,
-            "users":0
+            "users":0, "webpanel_port":9000
         }, users=[])
 
 @app.route('/add_user', methods=['POST'])
@@ -234,4 +245,5 @@ def control_service(svc, action):
     return redirect(url_for('dashboard'))
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=9000, debug=False)
+    web_port = get_webpanel_port()
+    app.run(host='0.0.0.0', port=web_port, debug=False)
