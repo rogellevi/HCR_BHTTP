@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard</title>
+    <title>Hex Dashboard</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
     <style>
@@ -27,48 +27,286 @@
         .icon-bhttp { background: rgba(0, 200, 83, 0.15); color: #00c853; }
         .icon-hcr { background: rgba(0, 188, 212, 0.15); color: #00bcd4; }
         .icon-udpgw { background: rgba(255, 193, 7, 0.15); color: #ffc107; }
+        .status-indicator { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-left: 8px; position: relative; }
+        .status-indicator.online { background-color: #00c853; box-shadow: 0 0 10px rgba(0, 200, 83, 0.6); animation: pulse-green 2s infinite; }
+        .status-indicator.offline { background-color: #ff5252; box-shadow: 0 0 10px rgba(255, 82, 82, 0.6); animation: pulse-red 2s infinite; }
+        @keyframes pulse-green { 0%, 100% { box-shadow: 0 0 10px rgba(0, 200, 83, 0.6); } 50% { box-shadow: 0 0 20px rgba(0, 200, 83, 0.9); } }
+        @keyframes pulse-red { 0%, 100% { box-shadow: 0 0 10px rgba(255, 82, 82, 0.6); } 50% { box-shadow: 0 0 20px rgba(255, 82, 82, 0.9); } }
+        .status-text { font-size: 11px; font-weight: 600; margin-left: 5px; text-transform: uppercase; }
+        .status-text.online { color: #00c853; }
+        .status-text.offline { color: #ff5252; }
         
-        /* NUEVO: Indicadores de estado con animación */
-        .status-indicator {
-            display: inline-block;
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-            margin-left: 8px;
+        /* ═══ Banner de Actualización ═══ */
+        .update-banner {
+            background: linear-gradient(135deg, rgba(0, 200, 83, 0.15), rgba(0, 230, 118, 0.05));
+            border: 1px solid rgba(0, 200, 83, 0.3);
+            border-left: 4px solid #00c853;
+            border-radius: 12px;
+            padding: 15px 20px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 15px;
+            animation: slideDown 0.5s ease-out;
             position: relative;
+            overflow: hidden;
         }
-        .status-indicator.online {
-            background-color: #00c853;
-            box-shadow: 0 0 10px rgba(0, 200, 83, 0.6);
-            animation: pulse-green 2s infinite;
+        .update-banner::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(0, 200, 83, 0.1), transparent);
+            animation: shimmer 3s infinite;
         }
-        .status-indicator.offline {
-            background-color: #ff5252;
-            box-shadow: 0 0 10px rgba(255, 82, 82, 0.6);
-            animation: pulse-red 2s infinite;
+        @keyframes shimmer { 0% { left: -100%; } 100% { left: 100%; } }
+        @keyframes slideDown { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
+        .update-banner-content {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            flex: 1;
+            min-width: 0;
+            position: relative;
+            z-index: 1;
         }
-        @keyframes pulse-green {
-            0%, 100% { box-shadow: 0 0 10px rgba(0, 200, 83, 0.6); }
-            50% { box-shadow: 0 0 20px rgba(0, 200, 83, 0.9); }
+        .update-icon {
+            width: 45px;
+            height: 45px;
+            background: linear-gradient(135deg, #00c853, #00e676);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 22px;
+            color: #fff;
+            flex-shrink: 0;
+            animation: bounce 2s ease-in-out infinite;
         }
-        @keyframes pulse-red {
-            0%, 100% { box-shadow: 0 0 10px rgba(255, 82, 82, 0.6); }
-            50% { box-shadow: 0 0 20px rgba(255, 82, 82, 0.9); }
+        @keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+        .update-text h6 {
+            color: #00c853;
+            font-weight: 700;
+            margin: 0 0 3px 0;
+            font-size: 15px;
         }
-        .status-text {
+        .update-text p {
+            color: #8b8b9e;
+            margin: 0;
+            font-size: 13px;
+        }
+        .update-text .version-badge {
+            display: inline-block;
+            background: rgba(0, 200, 83, 0.2);
+            color: #00c853;
+            padding: 2px 8px;
+            border-radius: 6px;
             font-size: 11px;
             font-weight: 600;
             margin-left: 5px;
-            text-transform: uppercase;
         }
-        .status-text.online { color: #00c853; }
-        .status-text.offline { color: #ff5252; }
+        .update-actions {
+            display: flex;
+            gap: 10px;
+            flex-shrink: 0;
+            position: relative;
+            z-index: 1;
+        }
+        .btn-update-now {
+            background: linear-gradient(135deg, #00c853, #00e676);
+            border: none;
+            color: #fff;
+            font-weight: 600;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-size: 13px;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .btn-update-now:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(0, 200, 83, 0.4);
+            color: #fff;
+        }
+        .btn-update-now:disabled {
+            opacity: 0.7;
+            cursor: not-allowed;
+        }
+        .btn-update-now .spinner-border {
+            width: 14px;
+            height: 14px;
+            border-width: 2px;
+        }
+        .btn-dismiss {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #8b8b9e;
+            padding: 10px 14px;
+            border-radius: 8px;
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .btn-dismiss:hover {
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+        }
+        .version-info {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 10px;
+            padding: 10px 15px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 13px;
+            color: #8b8b9e;
+        }
+        .version-info i { color: #00c853; }
+        .version-info strong { color: #e0e0e0; }
+        
+        /* ═══ Modal de Progreso de Actualización ═══ */
+        .update-modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            animation: fadeIn 0.3s ease-out;
+        }
+        .update-modal-overlay.active { display: flex; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        .update-modal-box {
+            background: #1e1e1e;
+            border: 1px solid #333;
+            border-radius: 20px;
+            padding: 40px;
+            max-width: 500px;
+            width: 90%;
+            text-align: center;
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
+            animation: scaleIn 0.4s ease-out;
+        }
+        @keyframes scaleIn { from { opacity: 0; transform: scale(0.9); } to { opacity: 1; transform: scale(1); } }
+        .update-spinner {
+            width: 80px;
+            height: 80px;
+            border: 4px solid rgba(0, 200, 83, 0.1);
+            border-top: 4px solid #00c853;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 25px;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .update-modal-title {
+            color: #00c853;
+            font-size: 22px;
+            font-weight: 700;
+            margin-bottom: 10px;
+        }
+        .update-modal-subtitle {
+            color: #8b8b9e;
+            font-size: 14px;
+            margin-bottom: 25px;
+        }
+        .update-steps {
+            text-align: left;
+            margin-top: 20px;
+        }
+        .update-step {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 15px;
+            margin-bottom: 8px;
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 10px;
+            transition: all 0.3s ease;
+        }
+        .update-step.active {
+            background: rgba(0, 200, 83, 0.1);
+            border-left: 3px solid #00c853;
+        }
+        .update-step.success {
+            background: rgba(0, 200, 83, 0.1);
+        }
+        .update-step.error {
+            background: rgba(255, 82, 82, 0.1);
+            border-left: 3px solid #ff5252;
+        }
+        .update-step-icon {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            flex-shrink: 0;
+            background: rgba(255, 255, 255, 0.05);
+            color: #8b8b9e;
+        }
+        .update-step.active .update-step-icon {
+            background: #00c853;
+            color: #fff;
+            animation: pulse-green 1s infinite;
+        }
+        .update-step.success .update-step-icon {
+            background: #00c853;
+            color: #fff;
+        }
+        .update-step.error .update-step-icon {
+            background: #ff5252;
+            color: #fff;
+        }
+        .update-step-text {
+            color: #e0e0e0;
+            font-size: 14px;
+            flex: 1;
+        }
+        .update-step-status {
+            font-size: 12px;
+            color: #8b8b9e;
+        }
+        .update-success-icon {
+            width: 100px;
+            height: 100px;
+            margin: 0 auto 25px;
+            background: linear-gradient(135deg, #00c853, #00e676);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 50px;
+            color: #fff;
+            animation: successPop 0.5s ease-out;
+        }
+        @keyframes successPop {
+            0% { transform: scale(0); opacity: 0; }
+            50% { transform: scale(1.2); }
+            100% { transform: scale(1); opacity: 1; }
+        }
     </style>
 </head>
 <body>
     <nav class="navbar navbar-dark bg-dark border-bottom border-secondary sticky-top">
         <div class="container-fluid">
-            <span class="navbar-brand mb-0 h1"><i class="bi bi-hexagon-fill text-success"></i> Web Panel</span>
+            <span class="navbar-brand mb-0 h1"><i class="bi bi-hexagon-fill text-success"></i> Hex Web Panel</span>
             <a href="/logout" class="btn btn-outline-danger btn-sm"><i class="bi bi-box-arrow-right"></i> Salir</a>
         </div>
     </nav>
@@ -78,9 +316,51 @@
                 {{ msg }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
             </div>
         {% endfor %}{% endif %}{% endwith %}
+        
+        <!-- Banner de Actualización Disponible -->
+        {% if stats.update_info.has_update %}
+        <div class="update-banner" id="updateBanner">
+            <div class="update-banner-content">
+                <div class="update-icon">
+                    <i class="bi bi-arrow-repeat"></i>
+                </div>
+                <div class="update-text">
+                    <h6>
+                        <i class="bi bi-stars"></i> ¡Nueva versión disponible!
+                        <span class="version-badge">v{{ stats.update_info.remote_version }}</span>
+                    </h6>
+                    <p>
+                        {{ stats.update_info.changelog }}
+                        <br>
+                        <small class="text-muted">
+                            <i class="bi bi-info-circle"></i> 
+                            Versión actual: <strong>v{{ stats.update_info.local_version }}</strong>
+                            {% if stats.update_info.checked_at %}
+                             · Verificado: {{ stats.update_info.checked_at }}
+                            {% endif %}
+                        </small>
+                    </p>
+                </div>
+            </div>
+            <div class="update-actions">
+                <button class="btn-update-now" id="btnUpdateNow" onclick="startUpdate()">
+                    <i class="bi bi-cloud-download"></i> Actualizar Ahora
+                </button>
+                <button class="btn-dismiss" onclick="dismissUpdate()" title="Ocultar">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            </div>
+        </div>
+        {% elif not stats.update_info.error %}
+        <!-- Versión actualizada -->
+        <div class="version-info">
+            <i class="bi bi-patch-check-fill"></i>
+            <span>Tu sistema está actualizado a la última versión <strong>v{{ stats.update_info.local_version }}</strong></span>
+        </div>
+        {% endif %}
+        
         <h5 class="mb-3"><i class="bi bi-hdd-network"></i> Servicios Activos</h5>
         <div class="row g-3 mb-4">
-            <!-- BHTTP -->
             <div class="col-12 col-md-6 col-lg-4">
                 <div class="card h-100"><div class="card-body">
                     <div class="d-flex justify-content-between align-items-center mb-2">
@@ -109,7 +389,6 @@
                     </div>
                 </div></div>
             </div>
-            <!-- HCR -->
             <div class="col-12 col-md-6 col-lg-4">
                 <div class="card h-100"><div class="card-body">
                     <div class="d-flex justify-content-between align-items-center mb-2">
@@ -138,7 +417,6 @@
                     </div>
                 </div></div>
             </div>
-            <!-- UDPGW -->
             <div class="col-12 col-md-6 col-lg-4">
                 <div class="card h-100"><div class="card-body">
                     <div class="d-flex justify-content-between align-items-center mb-2">
@@ -172,7 +450,7 @@
             <div class="col-12">
                 <div class="card"><div class="card-body">
                     <div class="d-flex flex-column flex-sm-row justify-content-between align-items-start align-items-sm-center mb-3 gap-2">
-                        <h5 class="card-title mb-0"><i class="bi bi-people-fill text-success"></i> Total Usuarios<span class="badge bg-secondary ms-1">{{ stats.users }}</span></h5>
+                        <h5 class="card-title mb-0"><i class="bi bi-people-fill text-success"></i> Usuarios Activos <span class="badge bg-secondary ms-1">{{ stats.users }}</span></h5>
                         <button type="button" class="btn btn-add-user" data-bs-toggle="modal" data-bs-target="#addUserModal">
                             <i class="bi bi-person-plus-fill me-1"></i> Agregar Usuario
                         </button>
@@ -208,6 +486,8 @@
             </div>
         </div>
     </div>
+    
+    <!-- Modal Agregar Usuario -->
     <div class="modal fade" id="addUserModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content">
@@ -244,6 +524,179 @@
             </div>
         </div>
     </div>
+    
+    <!-- Modal de Progreso de Actualización -->
+    <div class="update-modal-overlay" id="updateModal">
+        <div class="update-modal-box" id="updateModalBox">
+            <!-- Contenido dinámico -->
+        </div>
+    </div>
+    
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Ocultar banner de actualización
+        function dismissUpdate() {
+            const banner = document.getElementById('updateBanner');
+            if (banner) {
+                banner.style.animation = 'slideDown 0.3s ease-out reverse';
+                setTimeout(() => banner.remove(), 300);
+                sessionStorage.setItem('updateDismissed', 'true');
+            }
+        }
+        
+        if (sessionStorage.getItem('updateDismissed') === 'true') {
+            const banner = document.getElementById('updateBanner');
+            if (banner) banner.remove();
+        }
+        
+        // ═══ Función de Actualización Automática ═══
+        function startUpdate() {
+            if (!confirm('¿Deseas actualizar el sistema ahora? Se crearán backups automáticos antes de aplicar los cambios.')) {
+                return;
+            }
+            
+            const modal = document.getElementById('updateModal');
+            const modalBox = document.getElementById('updateModalBox');
+            const btnUpdate = document.getElementById('btnUpdateNow');
+            
+            // Deshabilitar botón
+            btnUpdate.disabled = true;
+            btnUpdate.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Actualizando...';
+            
+            // Mostrar modal de progreso
+            modal.classList.add('active');
+            modalBox.innerHTML = `
+                <div class="update-spinner"></div>
+                <div class="update-modal-title">Actualizando Sistema</div>
+                <div class="update-modal-subtitle">Por favor espera, esto puede tomar unos segundos...</div>
+                <div class="update-steps">
+                    <div class="update-step" id="step-menu">
+                        <div class="update-step-icon"><i class="bi bi-list"></i></div>
+                        <div class="update-step-text">Actualizando menú HEX</div>
+                        <div class="update-step-status">Pendiente</div>
+                    </div>
+                    <div class="update-step" id="step-templates">
+                        <div class="update-step-icon"><i class="bi bi-file-earmark-code"></i></div>
+                        <div class="update-step-text">Actualizando templates web</div>
+                        <div class="update-step-status">Pendiente</div>
+                    </div>
+                    <div class="update-step" id="step-backend">
+                        <div class="update-step-icon"><i class="bi bi-gear"></i></div>
+                        <div class="update-step-text">Actualizando backend</div>
+                        <div class="update-step-status">Pendiente</div>
+                    </div>
+                    <div class="update-step" id="step-version">
+                        <div class="update-step-icon"><i class="bi bi-tag"></i></div>
+                        <div class="update-step-text">Actualizando versión</div>
+                        <div class="update-step-status">Pendiente</div>
+                    </div>
+                </div>
+            `;
+            
+            // Animar pasos secuencialmente
+            animateStep('step-menu', 'Actualizando...');
+            setTimeout(() => animateStep('step-templates', 'Actualizando...'), 800);
+            setTimeout(() => animateStep('step-backend', 'Actualizando...'), 1600);
+            setTimeout(() => animateStep('step-version', 'Actualizando...'), 2400);
+            
+            // Hacer petición al servidor
+            fetch('/update_now', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showUpdateSuccess(data);
+                } else {
+                    showUpdateError(data.message);
+                }
+            })
+            .catch(error => {
+                showUpdateError('Error de conexión: ' + error.message);
+            });
+        }
+        
+        function animateStep(stepId, statusText) {
+            const step = document.getElementById(stepId);
+            if (step) {
+                step.classList.add('active');
+                step.querySelector('.update-step-status').textContent = statusText;
+            }
+        }
+        
+        function completeStep(stepId, success, message) {
+            const step = document.getElementById(stepId);
+            if (step) {
+                step.classList.remove('active');
+                step.classList.add(success ? 'success' : 'error');
+                const icon = step.querySelector('.update-step-icon i');
+                icon.className = success ? 'bi bi-check-lg' : 'bi bi-x-lg';
+                step.querySelector('.update-step-status').textContent = message;
+            }
+        }
+        
+        function showUpdateSuccess(data) {
+            const modalBox = document.getElementById('updateModalBox');
+            
+            // Marcar todos los pasos según resultado
+            completeStep('step-menu', data.details.menu.success, data.details.menu.message);
+            completeStep('step-templates', data.details.templates.success, data.details.templates.message);
+            completeStep('step-backend', data.details.backend.success, data.details.backend.message);
+            completeStep('step-version', data.details.version.success, data.details.version.message);
+            
+            setTimeout(() => {
+                modalBox.innerHTML = `
+                    <div class="update-success-icon">
+                        <i class="bi bi-check-lg"></i>
+                    </div>
+                    <div class="update-modal-title">¡Actualización Exitosa!</div>
+                    <div class="update-modal-subtitle">${data.message}</div>
+                    ${data.restart ? `<div class="alert alert-info border-0 mt-3" style="background: rgba(0, 188, 212, 0.1); color: #4dd0e1;">
+                        <i class="bi bi-arrow-repeat"></i> ${data.restart}
+                    </div>` : ''}
+                    <div style="margin-top: 20px; color: #8b8b9e; font-size: 13px;">
+                        <i class="bi bi-clock"></i> Recargando página en <span id="countdown">5</span> segundos...
+                    </div>
+                `;
+                
+                // Countdown y recarga
+                let count = 5;
+                const countdownEl = document.getElementById('countdown');
+                const interval = setInterval(() => {
+                    count--;
+                    if (countdownEl) countdownEl.textContent = count;
+                    if (count <= 0) {
+                        clearInterval(interval);
+                        window.location.reload();
+                    }
+                }, 1000);
+            }, 1500);
+        }
+        
+        function showUpdateError(message) {
+            const modalBox = document.getElementById('updateModalBox');
+            modalBox.innerHTML = `
+                <div style="width: 100px; height: 100px; margin: 0 auto 25px; background: linear-gradient(135deg, #ff5252, #ff1744); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 50px; color: #fff;">
+                    <i class="bi bi-exclamation-triangle"></i>
+                </div>
+                <div class="update-modal-title" style="color: #ff5252;">Error en la Actualización</div>
+                <div class="update-modal-subtitle">${message}</div>
+                <div class="alert alert-warning border-0 mt-3" style="background: rgba(255, 193, 7, 0.1); color: #ffc107;">
+                    <i class="bi bi-info-circle"></i> Tus archivos originales están a salvo gracias a los backups automáticos.
+                </div>
+                <button class="btn-update-now mt-3" onclick="window.location.reload()" style="background: linear-gradient(135deg, #6c757d, #495057);">
+                    <i class="bi bi-arrow-clockwise"></i> Recargar Página
+                </button>
+            `;
+            
+            // Re-habilitar botón
+            const btnUpdate = document.getElementById('btnUpdateNow');
+            if (btnUpdate) {
+                btnUpdate.disabled = false;
+                btnUpdate.innerHTML = '<i class="bi bi-cloud-download"></i> Actualizar Ahora';
+            }
+        }
+    </script>
 </body>
 </html>
