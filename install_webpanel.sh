@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ═══════════════════════════════════════════════════════════════
-#  HEX WEB PANEL - INSTALADOR AUTOMÁTICO
+#  WEB PANEL - INSTALADOR AUTOMÁTICO
 #  Repositorio: https://github.com/rogellevi/HCR_BHTTP
 # ═══════════════════════════════════════════════════════════════
 
@@ -14,7 +14,7 @@ BOLD='\033[1m'; ACC='\033[38;5;44m'
 
 PANEL_DIR="/opt/hex-webpanel"
 PANEL_PORT=9000
-ADMIN_PASS="HexAdmin2026"
+ADMIN_PASS="Admin2026"
 
 ui_top() { echo -e "${ACC}╔════════════════════════════════════════════════════════════╗${NC}"; }
 ui_sep() { echo -e "${ACC}╠════════════════════════════════════════════════════════════╣${NC}"; }
@@ -232,7 +232,7 @@ EOF_LOGIN
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Hex Manager - Dashboard</title>
+    <title>Manager - Dashboard</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
         body { background-color: #121212; color: #e0e0e0; }
