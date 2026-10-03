@@ -1,9 +1,9 @@
 #!/bin/bash
 
 # ═══════════════════════════════════════════════════════════════
-#  HEX MANAGER - MENÚ DE GESTIÓN COMPLETO (v1.0.0)
+#  HEX MANAGER - MENÚ DE GESTIÓN COMPLETO (v3.1.1)
 #  Repositorio: https://github.com/rogellevi/HCR_BHTTP
-#  Con sistema de actualización automática
+#  Con sistema de actualización automática y versión externa
 # ═══════════════════════════════════════════════════════════════
 
 RED='\033[38;5;203m'; GREEN='\033[38;5;84m'; YELLOW='\033[38;5;221m'
@@ -20,12 +20,14 @@ CLEANUP_LOG="/var/log/hex-cleanup.log"
 WEBPANEL_SERVICE="hex-webpanel.service"
 
 # ═══════════════════════════════════════════════════════════════
-#  CONFIGURACIÓN DE ACTUALIZACIONES
+#  CONFIGURACIÓN DE ACTUALIZACIONES (VERSIÓN EXTERNA)
 # ═══════════════════════════════════════════════════════════════
 VERSION_FILE="/etc/hex/version"
-HEX_VERSION=$(cat "$VERSION_FILE" 2>/dev/null || echo "1.0.0")"
 GITHUB_REPO="rogellevi/HCR_BHTTP"
 GITHUB_RAW="https://raw.githubusercontent.com/${GITHUB_REPO}/main"
+
+# Leer versión desde archivo externo (se actualiza automáticamente)
+HEX_VERSION=$(cat "$VERSION_FILE" 2>/dev/null || echo "3.1.1")
 
 mkdir -p /etc/hex
 touch "$USER_DB" && chmod 600 "$USER_DB"
@@ -172,7 +174,7 @@ actualizar_menu() {
             mv /tmp/hex_menu_new.sh /usr/local/bin/hex_menu
             chmod +x /usr/local/bin/hex_menu
             
-            # NUEVO: Descargar también la nueva versión
+            # Actualizar archivo de versión automáticamente
             if curl -fsSL "${GITHUB_RAW}/version.json" -o /tmp/version_new.json 2>/dev/null; then
                 local new_version=$(grep -o '"version": *"[^"]*"' /tmp/version_new.json | head -1 | cut -d'"' -f4)
                 if [ -n "$new_version" ]; then
@@ -299,7 +301,7 @@ actualizar_todo() {
             chmod +x /usr/local/bin/hex_menu
             ui_ok "Menú actualizado"
             
-            # Actualizar archivo de versión
+            # Actualizar archivo de versión automáticamente
             if curl -fsSL "${GITHUB_RAW}/version.json" -o /tmp/version_new.json 2>/dev/null; then
                 local new_version=$(grep -o '"version": *"[^"]*"' /tmp/version_new.json | head -1 | cut -d'"' -f4)
                 if [ -n "$new_version" ]; then
@@ -649,20 +651,32 @@ def dashboard():
         hcr_ports = open("/etc/hex/hcr_ports.conf").read().splitlines() if os.path.exists("/etc/hex/hcr_ports.conf") else []
         udpgw_ports = open("/etc/hex/udpgw_ports.conf").read().splitlines() if os.path.exists("/etc/hex/udpgw_ports.conf") else []
         
+        bhttp_active = sum(1 for p in bhttp_ports if get_service_status("bhttp", p))
+        hcr_active = sum(1 for p in hcr_ports if get_service_status("hcr", p))
+        udpgw_active = sum(1 for p in udpgw_ports if get_service_status("udpgw", p))
+        
         stats = {
             "bhttp_ports": [p for p in bhttp_ports if p.strip()],
             "hcr_ports": [p for p in hcr_ports if p.strip()],
             "udpgw_ports": [p for p in udpgw_ports if p.strip()],
-            "bhttp_active": sum(1 for p in bhttp_ports if get_service_status("bhttp", p)),
-            "hcr_active": sum(1 for p in hcr_ports if get_service_status("hcr", p)),
-            "udpgw_active": sum(1 for p in udpgw_ports if get_service_status("udpgw", p)),
+            "bhttp_active": bhttp_active,
+            "hcr_active": hcr_active,
+            "udpgw_active": udpgw_active,
+            "bhttp_online": bhttp_active > 0,
+            "hcr_online": hcr_active > 0,
+            "udpgw_online": udpgw_active > 0,
             "users": len(get_users())
         }
         return render_template('dashboard.html', stats=stats, users=get_users())
     except Exception as e:
         logging.error(f"Error en dashboard: {e}")
         flash(f"Error al cargar dashboard: {str(e)}")
-        return render_template('dashboard.html', stats={"bhttp_ports":[], "hcr_ports":[], "udpgw_ports":[], "bhttp_active":0, "hcr_active":0, "udpgw_active":0, "users":0}, users=[])
+        return render_template('dashboard.html', stats={
+            "bhttp_ports":[], "hcr_ports":[], "udpgw_ports":[],
+            "bhttp_active":0, "hcr_active":0, "udpgw_active":0,
+            "bhttp_online":False, "hcr_online":False, "udpgw_online":False,
+            "users":0
+        }, users=[])
 
 @app.route('/add_user', methods=['POST'])
 @login_required
@@ -864,7 +878,7 @@ EOF_APP
             </div>
             <button type="submit" class="btn btn-login"><i class="bi bi-box-arrow-in-right me-2"></i>Iniciar Sesión</button>
         </form>
-        <p class="footer-text"><i class="bi bi-shield-lock-fill"></i> Acceso restringido · v3.0</p>
+        <p class="footer-text"><i class="bi bi-shield-lock-fill"></i> Acceso restringido · v3.1</p>
     </div>
 </body>
 </html>
@@ -900,6 +914,14 @@ EOF_LOGIN
         .icon-bhttp { background: rgba(0, 200, 83, 0.15); color: #00c853; }
         .icon-hcr { background: rgba(0, 188, 212, 0.15); color: #00bcd4; }
         .icon-udpgw { background: rgba(255, 193, 7, 0.15); color: #ffc107; }
+        .status-indicator { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-left: 8px; position: relative; }
+        .status-indicator.online { background-color: #00c853; box-shadow: 0 0 10px rgba(0, 200, 83, 0.6); animation: pulse-green 2s infinite; }
+        .status-indicator.offline { background-color: #ff5252; box-shadow: 0 0 10px rgba(255, 82, 82, 0.6); animation: pulse-red 2s infinite; }
+        @keyframes pulse-green { 0%, 100% { box-shadow: 0 0 10px rgba(0, 200, 83, 0.6); } 50% { box-shadow: 0 0 20px rgba(0, 200, 83, 0.9); } }
+        @keyframes pulse-red { 0%, 100% { box-shadow: 0 0 10px rgba(255, 82, 82, 0.6); } 50% { box-shadow: 0 0 20px rgba(255, 82, 82, 0.9); } }
+        .status-text { font-size: 11px; font-weight: 600; margin-left: 5px; text-transform: uppercase; }
+        .status-text.online { color: #00c853; }
+        .status-text.offline { color: #ff5252; }
     </style>
 </head>
 <body>
@@ -921,7 +943,15 @@ EOF_LOGIN
                 <div class="card h-100"><div class="card-body">
                     <div class="d-flex justify-content-between align-items-center mb-2">
                         <h5 class="card-title mb-0 d-flex align-items-center">
-                            <span class="service-icon icon-bhttp"><i class="bi bi-globe"></i></span><span class="text-success">BHTTP</span>
+                            <span class="service-icon icon-bhttp"><i class="bi bi-globe"></i></span>
+                            <span class="text-success">BHTTP</span>
+                            {% if stats.bhttp_online %}
+                                <span class="status-indicator online"></span>
+                                <span class="status-text online">ONLINE</span>
+                            {% else %}
+                                <span class="status-indicator offline"></span>
+                                <span class="status-text offline">OFFLINE</span>
+                            {% endif %}
                         </h5>
                         <span class="badge bg-success">{{ stats.bhttp_active }}/{{ stats.bhttp_ports|length }}</span>
                     </div>
@@ -941,7 +971,15 @@ EOF_LOGIN
                 <div class="card h-100"><div class="card-body">
                     <div class="d-flex justify-content-between align-items-center mb-2">
                         <h5 class="card-title mb-0 d-flex align-items-center">
-                            <span class="service-icon icon-hcr"><i class="bi bi-shield-lock"></i></span><span class="text-info">HCR</span>
+                            <span class="service-icon icon-hcr"><i class="bi bi-shield-lock"></i></span>
+                            <span class="text-info">HCR</span>
+                            {% if stats.hcr_online %}
+                                <span class="status-indicator online"></span>
+                                <span class="status-text online">ONLINE</span>
+                            {% else %}
+                                <span class="status-indicator offline"></span>
+                                <span class="status-text offline">OFFLINE</span>
+                            {% endif %}
                         </h5>
                         <span class="badge bg-info text-dark">{{ stats.hcr_active }}/{{ stats.hcr_ports|length }}</span>
                     </div>
@@ -961,7 +999,15 @@ EOF_LOGIN
                 <div class="card h-100"><div class="card-body">
                     <div class="d-flex justify-content-between align-items-center mb-2">
                         <h5 class="card-title mb-0 d-flex align-items-center">
-                            <span class="service-icon icon-udpgw"><i class="bi bi-wifi"></i></span><span class="text-warning">UDPGW</span>
+                            <span class="service-icon icon-udpgw"><i class="bi bi-wifi"></i></span>
+                            <span class="text-warning">UDPGW</span>
+                            {% if stats.udpgw_online %}
+                                <span class="status-indicator online"></span>
+                                <span class="status-text online">ONLINE</span>
+                            {% else %}
+                                <span class="status-indicator offline"></span>
+                                <span class="status-text offline">OFFLINE</span>
+                            {% endif %}
                         </h5>
                         <span class="badge bg-warning text-dark">{{ stats.udpgw_active }}/{{ stats.udpgw_ports|length }}</span>
                     </div>
