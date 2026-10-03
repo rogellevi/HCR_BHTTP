@@ -3,8 +3,8 @@
   "release_date": "2026-10-04",
   "changelog": "Panel web moderno con modal, múltiples puertos, limpieza automática",
   "components": {
-    "menu": "3.1.1",
-    "templates": "3.1.1",
-    "backend": "3.1.1"
+    "menu": "3.1.2",
+    "templates": "3.1.2",
+    "backend": "3.1.2"
   }
 }
