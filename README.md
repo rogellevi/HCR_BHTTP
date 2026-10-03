@@ -77,6 +77,21 @@ sudo bash install.sh
 
 ## 📂 Estructura del Repositorio
 
+HCR_BHTTP/
+├── 📄 README.md              ← ✨ NUEVO
+├── 📄 CHANGELOG.md           ← ✨ NUEVO
+├── 📄 version.json           ← ✨ NUEVO
+├── 📄 LICENSE                ← ✨ NUEVO
+├── 📄 install.sh
+├── 📄 install_webpanel.sh
+├── 📄 hex_menu.sh
+├── 📄 app.py
+├── 📁 templates/
+│   ├── 📄 login.html
+│   └── 📄 dashboard.html
+└── 📁 docs/
+    └── 📁 screenshots/       ← ✨ NUEVO (para capturas)
+
 ```
 wget -qO- https://raw.githubusercontent.com/rogellevi/HCR_BHTTP/main/install.sh | bash
 ```
