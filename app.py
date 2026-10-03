@@ -1,5 +1,5 @@
-import os, subprocess, datetime, logging
-from flask import Flask, render_template, request, redirect, url_for, flash
+import os, subprocess, datetime, logging, time, json, threading
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user
 
 logging.basicConfig(filename='/var/log/hex-webpanel.log', level=logging.INFO, 
@@ -22,9 +22,15 @@ CHAGE = '/usr/bin/chage'
 GROUPADD = '/usr/sbin/groupadd'
 ID = '/usr/bin/id'
 GETENT = '/usr/bin/getent'
+CURL = '/usr/bin/curl'
+BASH = '/bin/bash'
 
-# Archivo de configuración del puerto
+# Archivos de configuración
 WEBPANEL_PORT_FILE = "/etc/hex/webpanel_port.conf"
+VERSION_FILE = "/etc/hex/version"
+UPDATE_CACHE_FILE = "/tmp/hex_update_cache.json"
+GITHUB_RAW = "https://raw.githubusercontent.com/rogellevi/HCR_BHTTP/main"
+CACHE_DURATION = 300  # 5 minutos
 
 def get_webpanel_port():
     try:
@@ -61,6 +67,209 @@ def get_users():
             logging.error(f"Error leyendo users.txt: {e}")
     return users
 
+# ═══════════════════════════════════════════════════════════════
+#  SISTEMA DE VERIFICACIÓN Y ACTUALIZACIÓN AUTOMÁTICA
+# ═══════════════════════════════════════════════════════════════
+
+def get_local_version():
+    try:
+        if os.path.exists(VERSION_FILE):
+            return open(VERSION_FILE).read().strip()
+    except:
+        pass
+    return "3.1.2"
+
+def check_updates():
+    """Verifica si hay actualizaciones disponibles con caché de 5 minutos"""
+    try:
+        if os.path.exists(UPDATE_CACHE_FILE):
+            cache_age = time.time() - os.path.getmtime(UPDATE_CACHE_FILE)
+            if cache_age < CACHE_DURATION:
+                with open(UPDATE_CACHE_FILE, 'r') as f:
+                    return json.load(f)
+        
+        local_version = get_local_version()
+        
+        import urllib.request
+        req = urllib.request.Request(
+            f"{GITHUB_RAW}/version.json",
+            headers={'User-Agent': 'HexWebPanel/1.0'}
+        )
+        with urllib.request.urlopen(req, timeout=3) as response:
+            remote_data = json.loads(response.read().decode())
+        
+        remote_version = remote_data.get('version', local_version)
+        changelog = remote_data.get('changelog', 'Nuevas mejoras disponibles')
+        
+        has_update = remote_version != local_version
+        
+        result = {
+            "has_update": has_update,
+            "local_version": local_version,
+            "remote_version": remote_version,
+            "changelog": changelog,
+            "checked_at": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+        
+        with open(UPDATE_CACHE_FILE, 'w') as f:
+            json.dump(result, f)
+        
+        return result
+        
+    except Exception as e:
+        logging.error(f"Error verificando actualizaciones: {e}")
+        return {
+            "has_update": False,
+            "local_version": get_local_version(),
+            "remote_version": get_local_version(),
+            "changelog": "",
+            "checked_at": "",
+            "error": True
+        }
+
+def invalidate_update_cache():
+    """Invalida el caché de actualizaciones"""
+    try:
+        if os.path.exists(UPDATE_CACHE_FILE):
+            os.remove(UPDATE_CACHE_FILE)
+    except:
+        pass
+
+def schedule_restart():
+    """Programa el reinicio del panel en 2 segundos (en background)"""
+    def restart_later():
+        time.sleep(2)
+        try:
+            subprocess.run([SYSTEMCTL, 'restart', 'hex-webpanel.service'], 
+                          capture_output=True, timeout=10)
+        except:
+            pass
+    
+    thread = threading.Thread(target=restart_later, daemon=True)
+    thread.start()
+
+def perform_update():
+    """Ejecuta la actualización completa del sistema"""
+    results = {
+        "menu": {"success": False, "message": ""},
+        "templates": {"success": False, "message": ""},
+        "backend": {"success": False, "message": ""},
+        "version": {"success": False, "message": ""}
+    }
+    
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    
+    # 1. Actualizar menú
+    try:
+        menu_backup = f"/usr/local/bin/hex_menu.backup.{timestamp}"
+        if os.path.exists("/usr/local/bin/hex_menu"):
+            subprocess.run(['cp', '/usr/local/bin/hex_menu', menu_backup], capture_output=True)
+        
+        res = subprocess.run(
+            [CURL, '-fsSL', f"{GITHUB_RAW}/hex_menu.sh", '-o', '/tmp/hex_menu_new.sh'],
+            capture_output=True, text=True, timeout=30
+        )
+        
+        if res.returncode == 0 and os.path.exists('/tmp/hex_menu_new.sh'):
+            # Validar sintaxis
+            syntax_check = subprocess.run([BASH, '-n', '/tmp/hex_menu_new.sh'], capture_output=True)
+            if syntax_check.returncode == 0:
+                subprocess.run(['mv', '/tmp/hex_menu_new.sh', '/usr/local/bin/hex_menu'], capture_output=True)
+                os.chmod('/usr/local/bin/hex_menu', 0o755)
+                results["menu"] = {"success": True, "message": "Menú actualizado"}
+            else:
+                results["menu"] = {"success": False, "message": "Error de sintaxis"}
+        else:
+            results["menu"] = {"success": False, "message": "Error de descarga"}
+    except Exception as e:
+        results["menu"] = {"success": False, "message": str(e)}
+    
+    # 2. Actualizar templates
+    try:
+        templates_dir = "/opt/hex-webpanel/templates"
+        if os.path.exists(templates_dir):
+            backup_dir = f"{templates_dir}.backup.{timestamp}"
+            subprocess.run(['cp', '-r', templates_dir, backup_dir], capture_output=True)
+            
+            login_ok = subprocess.run(
+                [CURL, '-fsSL', f"{GITHUB_RAW}/templates/login.html", '-o', f"{templates_dir}/login.html"],
+                capture_output=True, timeout=30
+            ).returncode == 0
+            
+            dash_ok = subprocess.run(
+                [CURL, '-fsSL', f"{GITHUB_RAW}/templates/dashboard.html", '-o', f"{templates_dir}/dashboard.html"],
+                capture_output=True, timeout=30
+            ).returncode == 0
+            
+            if login_ok and dash_ok:
+                results["templates"] = {"success": True, "message": "Templates actualizados"}
+            else:
+                results["templates"] = {"success": False, "message": "Error en algunos templates"}
+        else:
+            results["templates"] = {"success": True, "message": "Panel no instalado, omitido"}
+    except Exception as e:
+        results["templates"] = {"success": False, "message": str(e)}
+    
+    # 3. Actualizar backend
+    try:
+        if os.path.exists("/opt/hex-webpanel/app.py"):
+            app_backup = f"/opt/hex-webpanel/app.py.backup.{timestamp}"
+            subprocess.run(['cp', '/opt/hex-webpanel/app.py', app_backup], capture_output=True)
+            
+            res = subprocess.run(
+                [CURL, '-fsSL', f"{GITHUB_RAW}/app.py", '-o', '/tmp/app_new.py'],
+                capture_output=True, text=True, timeout=30
+            )
+            
+            if res.returncode == 0 and os.path.exists('/tmp/app_new.py'):
+                # Validar sintaxis Python
+                syntax_check = subprocess.run(
+                    ['python3', '-m', 'py_compile', '/tmp/app_new.py'],
+                    capture_output=True
+                )
+                if syntax_check.returncode == 0:
+                    subprocess.run(['mv', '/tmp/app_new.py', '/opt/hex-webpanel/app.py'], capture_output=True)
+                    results["backend"] = {"success": True, "message": "Backend actualizado"}
+                else:
+                    results["backend"] = {"success": False, "message": "Error de sintaxis"}
+            else:
+                results["backend"] = {"success": False, "message": "Error de descarga"}
+        else:
+            results["backend"] = {"success": True, "message": "Panel no instalado, omitido"}
+    except Exception as e:
+        results["backend"] = {"success": False, "message": str(e)}
+    
+    # 4. Actualizar versión
+    try:
+        res = subprocess.run(
+            [CURL, '-fsSL', f"{GITHUB_RAW}/version.json", '-o', '/tmp/version_new.json'],
+            capture_output=True, text=True, timeout=30
+        )
+        
+        if res.returncode == 0 and os.path.exists('/tmp/version_new.json'):
+            with open('/tmp/version_new.json', 'r') as f:
+                version_data = json.load(f)
+            new_version = version_data.get('version', '')
+            if new_version:
+                with open(VERSION_FILE, 'w') as f:
+                    f.write(new_version)
+                results["version"] = {"success": True, "message": f"Versión actualizada a {new_version}"}
+            os.remove('/tmp/version_new.json')
+        else:
+            results["version"] = {"success": False, "message": "Error al obtener versión"}
+    except Exception as e:
+        results["version"] = {"success": False, "message": str(e)}
+    
+    # Invalidar caché de actualizaciones
+    invalidate_update_cache()
+    
+    logging.info(f"Actualización completada: {results}")
+    return results
+
+# ═══════════════════════════════════════════════════════════════
+#  RUTAS DE LA APLICACIÓN
+# ═══════════════════════════════════════════════════════════════
+
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
@@ -88,6 +297,8 @@ def dashboard():
         hcr_active = sum(1 for p in hcr_ports if get_service_status("hcr", p))
         udpgw_active = sum(1 for p in udpgw_ports if get_service_status("udpgw", p))
         
+        update_info = check_updates()
+        
         stats = {
             "bhttp_ports": [p for p in bhttp_ports if p.strip()],
             "hcr_ports": [p for p in hcr_ports if p.strip()],
@@ -99,7 +310,8 @@ def dashboard():
             "hcr_online": hcr_active > 0,
             "udpgw_online": udpgw_active > 0,
             "users": len(get_users()),
-            "webpanel_port": get_webpanel_port()
+            "webpanel_port": get_webpanel_port(),
+            "update_info": update_info
         }
         return render_template('dashboard.html', stats=stats, users=get_users())
     except Exception as e:
@@ -109,8 +321,43 @@ def dashboard():
             "bhttp_ports":[], "hcr_ports":[], "udpgw_ports":[],
             "bhttp_active":0, "hcr_active":0, "udpgw_active":0,
             "bhttp_online":False, "hcr_online":False, "udpgw_online":False,
-            "users":0, "webpanel_port":9000
+            "users":0, "webpanel_port":9000,
+            "update_info": {"has_update": False, "local_version": "3.1.2", "remote_version": "3.1.2", "changelog": "", "checked_at": "", "error": True}
         }, users=[])
+
+@app.route('/update_now', methods=['POST'])
+@login_required
+def update_now():
+    """Endpoint para ejecutar la actualización completa"""
+    try:
+        logging.info("Iniciando actualización desde el panel web")
+        results = perform_update()
+        
+        # Contar éxitos
+        success_count = sum(1 for k, v in results.items() if v["success"])
+        total_count = len(results)
+        
+        # Programar reinicio si al menos el backend o templates se actualizaron
+        if results["backend"]["success"] or results["templates"]["success"]:
+            schedule_restart()
+            restart_msg = "El panel se reiniciará automáticamente en unos segundos."
+        else:
+            restart_msg = ""
+        
+        return jsonify({
+            "success": True,
+            "message": f"Actualización completada: {success_count}/{total_count} componentes actualizados",
+            "details": results,
+            "restart": restart_msg,
+            "will_reload": results["backend"]["success"] or results["templates"]["success"]
+        })
+        
+    except Exception as e:
+        logging.error(f"Error en actualización: {e}", exc_info=True)
+        return jsonify({
+            "success": False,
+            "message": f"Error durante la actualización: {str(e)}"
+        }), 500
 
 @app.route('/add_user', methods=['POST'])
 @login_required
