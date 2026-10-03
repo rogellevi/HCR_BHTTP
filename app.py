@@ -2,6 +2,7 @@ import os, subprocess, datetime, logging
 from flask import Flask, render_template, request, redirect, url_for, flash
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user
 
+# Configuración de logging
 logging.basicConfig(filename='/var/log/hex-webpanel.log', level=logging.INFO, 
                     format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -10,8 +11,9 @@ app.secret_key = 'hex_secret_key_cambiar_123'
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
-ADMIN_PASSWORD = "CHADGT@"
+ADMIN_PASSWORD = "HexAdmin2026"
 
+# Rutas absolutas de comandos del sistema
 SYSTEMCTL = '/usr/bin/systemctl'
 USERADD = '/usr/sbin/useradd'
 USERDEL = '/usr/sbin/userdel'
@@ -33,7 +35,8 @@ def get_service_status(svc, port):
         result = subprocess.run([SYSTEMCTL, 'is-active', f"{svc}@{port}.service"], 
                               capture_output=True, text=True)
         return result.returncode == 0 and "active" in result.stdout
-    except: return False
+    except:
+        return False
 
 def get_users():
     users = []
@@ -82,7 +85,6 @@ def dashboard():
             "bhttp_active": bhttp_active,
             "hcr_active": hcr_active,
             "udpgw_active": udpgw_active,
-            # NUEVO: Estado general de cada servicio
             "bhttp_online": bhttp_active > 0,
             "hcr_online": hcr_active > 0,
             "udpgw_online": udpgw_active > 0,
