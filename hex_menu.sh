@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ═══════════════════════════════════════════════════════════════
-#  HEX MANAGER - MENÚ DE GESTIÓN COMPLETO (v3.0.0)
+#  HEX MANAGER - MENÚ DE GESTIÓN COMPLETO (v1.0.0)
 #  Repositorio: https://github.com/rogellevi/HCR_BHTTP
 #  Con sistema de actualización automática
 # ═══════════════════════════════════════════════════════════════
@@ -22,7 +22,8 @@ WEBPANEL_SERVICE="hex-webpanel.service"
 # ═══════════════════════════════════════════════════════════════
 #  CONFIGURACIÓN DE ACTUALIZACIONES
 # ═══════════════════════════════════════════════════════════════
-HEX_VERSION="3.0.0"
+VERSION_FILE="/etc/hex/version"
+HEX_VERSION=$(cat "$VERSION_FILE" 2>/dev/null || echo "1.0.0")"
 GITHUB_REPO="rogellevi/HCR_BHTTP"
 GITHUB_RAW="https://raw.githubusercontent.com/${GITHUB_REPO}/main"
 
