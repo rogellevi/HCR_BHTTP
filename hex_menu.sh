@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ═══════════════════════════════════════════════════════════════
-#  HEX MANAGER - MENÚ DE GESTIÓN COMPLETO (v3.1.1)
+#  MANAGER - MENÚ DE GESTIÓN COMPLETO (v3.1.1)
 #  Repositorio: https://github.com/rogellevi/HCR_BHTTP
 #  Con sistema de actualización automática y versión externa
 # ═══════════════════════════════════════════════════════════════
@@ -33,7 +33,7 @@ mkdir -p /etc/hex
 touch "$USER_DB" && chmod 600 "$USER_DB"
 [ -f "$BHTTP_PORTS_CONF" ] || echo "80" > "$BHTTP_PORTS_CONF"
 [ -f "$HCR_PORTS_CONF" ] || echo "8080" > "$HCR_PORTS_CONF"
-[ -f "$UDPGW_PORTS_CONF" ] || echo -e "7300\n7301" > "$UDPGW_PORTS_CONF"
+[ -f "$UDPGW_PORTS_CONF" ] || echo -e "7100\n7200\n7300" > "$UDPGW_PORTS_CONF"
 
 # Instalación automática de limpieza al iniciar
 if [ ! -f "$CLEANUP_SCRIPT" ]; then
