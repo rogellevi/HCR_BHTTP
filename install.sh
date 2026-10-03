@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ═══════════════════════════════════════════════════════════════
-#  HEX MANAGER - INSTALADOR AUTOMÁTICO (Múltiples Puertos)
+#  MANAGER - INSTALADOR AUTOMÁTICO (Múltiples Puertos)
 #  Repositorio: https://github.com/rogellevi/HCR_BHTTP
 # ═══════════════════════════════════════════════════════════════
 
@@ -73,11 +73,11 @@ descargar_binarios() {
     clear; ui_top; ui_titulo "2/6 DESCARGANDO BINARIOS"; ui_sep; ui_fila ""
     ARCH=$(detectar_arquitectura)
     mkdir -p /opt/bhttp /opt/hcr /etc/hex /var/log/bhttp /var/log/hcr >/dev/null 2>&1
-    
+
     ui_info "Descargando BHTTP ($ARCH)..."
     descargar_archivo "${GITHUB_RAW}/bhttp-server-v2.4.1-btun-compat-keepalive-linux-${ARCH}" "$BHTTP_BIN"
     [ -f "$BHTTP_BIN" ] && [ -s "$BHTTP_BIN" ] && chmod +x "$BHTTP_BIN" && ui_ok "BHTTP descargado" || { ui_error "Fallo al descargar BHTTP"; exit 1; }
-    
+
     ui_info "Descargando HCR ($ARCH)..."
     descargar_archivo "${GITHUB_RAW}/hcr-server-linux-${ARCH}" "$HCR_BIN"
     [ -f "$HCR_BIN" ] && [ -s "$HCR_BIN" ] && chmod +x "$HCR_BIN" && ui_ok "HCR descargado" || { ui_error "Fallo al descargar HCR"; exit 1; }
@@ -92,11 +92,11 @@ compilar_udpgw() {
     git clone https://github.com/ambrop72/badvpn.git >/dev/null 2>&1
     cd badvpn || exit 1
     mkdir -p build && cd build || exit 1
-    
+
     ui_info "Compilando solo el módulo udpgw..."
     cmake .. -DBUILD_NOTHING_BY_DEFAULT=1 -DBUILD_UDPGW=1 >/dev/null 2>&1
     make -j"$(nproc)" >/dev/null 2>&1
-    
+
     if [ -f "udpgw/badvpn-udpgw" ]; then
         mkdir -p /opt/udpgw
         cp udpgw/badvpn-udpgw /opt/udpgw/udpgw-server
@@ -112,13 +112,13 @@ compilar_udpgw() {
 
 configurar_servicios() {
     clear; ui_top; ui_titulo "4/6 CONFIGURANDO SERVICIOS"; ui_sep; ui_fila ""
-    
+
     # Archivos de puertos por defecto
-    echo -e "80\n8080" > /etc/hex/bhttp_ports.conf
-    echo -e "8080\n8081" > /etc/hex/hcr_ports.conf
-    echo -e "7300\n7301" > /etc/hex/udpgw_ports.conf
+    echo -e "80\n8880" > /etc/hex/bhttp_ports.conf
+    echo -e "8080" > /etc/hex/hcr_ports.conf
+    echo -e "7100\n7200\n7300" > /etc/hex/udpgw_ports.conf
     touch "$USER_DB" && chmod 600 "$USER_DB"
-    
+
     # Plantilla BHTTP
     ui_info "Configurando plantilla BHTTP..."
     cat > /etc/systemd/system/bhttp@.service <<EOF
@@ -186,7 +186,7 @@ EOF
 
 iniciar_y_configurar_firewall() {
     clear; ui_top; ui_titulo "5/6 FIREWALL E INICIO"; ui_sep; ui_fila ""
-    
+
     # Función auxiliar para iniciar un servicio y abrir firewall
     iniciar_puerto() {
         local svc=$1 port=$2 proto=$3
@@ -207,7 +207,7 @@ iniciar_y_configurar_firewall() {
     ui_info "Iniciando puertos UDPGW..."
     while read -r port; do [ -z "$port" ] && continue; iniciar_puerto "udpgw" "$port" "udp"; iniciar_puerto "udpgw" "$port" "tcp"; done < /etc/hex/udpgw_ports.conf
     ui_ok "UDPGW iniciado"
-    
+
     ui_fila ""; sleep 1
 }
 
@@ -216,7 +216,7 @@ instalar_menu_y_limpieza() {
     ui_info "Descargando menú de gestión..."
     descargar_archivo "${GITHUB_RAW}/hex_menu.sh" "/usr/local/bin/hex_menu"
     [ -f "/usr/local/bin/hex_menu" ] && chmod +x /usr/local/bin/hex_menu && cp /usr/local/bin/hex_menu /usr/bin/hex_menu 2>/dev/null && ui_ok "Menú instalado" || ui_error "Fallo al descargar menú"
-    
+
     ui_info "Configurando limpieza automática..."
     cat > /usr/local/bin/hex_cleanup.sh <<'EOF_CLEANUP'
 #!/bin/bash
@@ -243,25 +243,25 @@ EOF_CLEANUP
 
 instalar_panel_web() {
     clear; ui_top; ui_titulo "INSTALANDO PANEL WEB"; ui_sep; ui_fila ""
-    
+
     ui_info "Instalando dependencias de Python..."
     apt-get install -y python3 python3-pip python3-venv >/dev/null 2>&1
-    
+
     PANEL_DIR="/opt/hex-webpanel"
     PANEL_PORT=9000
     ADMIN_PASS="HexAdmin2026"
-    
+
     ui_info "Creando estructura del panel..."
     mkdir -p "$PANEL_DIR/templates"
     cd "$PANEL_DIR" || exit 1
     python3 -m venv venv >/dev/null 2>&1
     source venv/bin/activate
     pip install flask flask-login psutil >/dev/null 2>&1
-    
+
     ui_info "Creando aplicación..."
     # (Aquí va todo el código de app.py que está en install_webpanel.sh)
     # Para ahorrar espacio, puedes copiar el contenido de la función crear_app() del instalador del panel
-    
+
     ui_info "Configurando servicio..."
     cat > /etc/systemd/system/hex-webpanel.service <<EOF
 [Unit]
@@ -278,13 +278,13 @@ Restart=always
 [Install]
 WantedBy=multi-user.target
 EOF
-    
+
     systemctl daemon-reload >/dev/null 2>&1
     systemctl enable hex-webpanel.service >/dev/null 2>&1
-    
+
     iptables -I INPUT -p tcp --dport $PANEL_PORT -j ACCEPT 2>/dev/null
     command -v ufw >/dev/null 2>&1 && ufw allow $PANEL_PORT/tcp >/dev/null 2>&1
-    
+
     systemctl start hex-webpanel.service
     ui_ok "Panel Web instalado en puerto $PANEL_PORT"
     ui_fila ""; sleep 1
@@ -292,12 +292,12 @@ EOF
 
 mostrar_resumen() {
     clear; ui_top; ui_titulo "✓ INSTALACIÓN COMPLETADA"; ui_sep; ui_fila ""
-    
+
     # Contar estados
     bhttp_active=$(grep -c "." /etc/hex/bhttp_ports.conf 2>/dev/null || echo 0)
     hcr_active=$(grep -c "." /etc/hex/hcr_ports.conf 2>/dev/null || echo 0)
     udpgw_active=$(grep -c "." /etc/hex/udpgw_ports.conf 2>/dev/null || echo 0)
-    
+
     ui_fila "  ${CYAN}BHTTP${NC} - $bhttp_active puertos configurados  ${GREEN}● ACTIVO${NC}"
     ui_fila "  ${CYAN}HCR${NC}   - $hcr_active puertos configurados  ${GREEN}● ACTIVO${NC}"
     ui_fila "  ${CYAN}UDPGW${NC}  - $udpgw_active puertos configurados  ${GREEN}● ACTIVO${NC}"
