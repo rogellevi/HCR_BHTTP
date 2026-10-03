@@ -171,6 +171,17 @@ actualizar_menu() {
         if bash -n /tmp/hex_menu_new.sh 2>/dev/null; then
             mv /tmp/hex_menu_new.sh /usr/local/bin/hex_menu
             chmod +x /usr/local/bin/hex_menu
+            
+            # NUEVO: Descargar también la nueva versión
+            if curl -fsSL "${GITHUB_RAW}/version.json" -o /tmp/version_new.json 2>/dev/null; then
+                local new_version=$(grep -o '"version": *"[^"]*"' /tmp/version_new.json | head -1 | cut -d'"' -f4)
+                if [ -n "$new_version" ]; then
+                    echo "$new_version" > "$VERSION_FILE"
+                    ui_ok "Versión actualizada a $new_version"
+                fi
+                rm -f /tmp/version_new.json
+            fi
+            
             ui_ok "Menú actualizado correctamente"
             ui_fila "  ${YELLOW}⚠ Reinicia el menú para aplicar cambios${NC}"
             ui_fila "  ${GRIS}Backup guardado en: /usr/local/bin/hex_menu.backup.*${NC}"
