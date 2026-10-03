@@ -293,7 +293,13 @@ actualizar_todo() {
     
     ui_info "[1/3] Actualizando menú..."
     cp /usr/local/bin/hex_menu /usr/local/bin/hex_menu.backup.$(date +%Y%m%d_%H%M%S) 2>/dev/null
-    # Actualizar archivo de versión
+    if curl -fsSL "${GITHUB_RAW}/hex_menu.sh" -o /tmp/hex_menu_new.sh 2>/dev/null; then
+        if bash -n /tmp/hex_menu_new.sh 2>/dev/null; then
+            mv /tmp/hex_menu_new.sh /usr/local/bin/hex_menu
+            chmod +x /usr/local/bin/hex_menu
+            ui_ok "Menú actualizado"
+            
+            # Actualizar archivo de versión
             if curl -fsSL "${GITHUB_RAW}/version.json" -o /tmp/version_new.json 2>/dev/null; then
                 local new_version=$(grep -o '"version": *"[^"]*"' /tmp/version_new.json | head -1 | cut -d'"' -f4)
                 if [ -n "$new_version" ]; then
@@ -302,6 +308,12 @@ actualizar_todo() {
                 fi
                 rm -f /tmp/version_new.json
             fi
+        else
+            ui_error "Error de sintaxis en menú descargado"
+        fi
+    else
+        ui_error "Error al actualizar menú"
+    fi
     
     if [ -d "/opt/hex-webpanel" ]; then
         ui_info "[2/3] Actualizando templates..."
