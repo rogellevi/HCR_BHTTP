@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ═══════════════════════════════════════════════════════════════
-#  HEX MANAGER - MENÚ DE GESTIÓN COMPLETO (v3.1.2)
+#  MANAGER - MENÚ DE GESTIÓN COMPLETO (v3.1.2)
 #  Repositorio: https://github.com/rogellevi/HCR_BHTTP
 #  Con sistema de actualización automática y puerto web configurable
 # ═══════════════════════════════════════════════════════════════
