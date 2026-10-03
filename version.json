@@ -1,10 +1,10 @@
 {
-  "version": "3.0.1",
+  "version": "3.1.0",
   "release_date": "2026-10-04",
   "changelog": "Panel web moderno con modal, múltiples puertos, limpieza automática",
   "components": {
-    "menu": "3.0.0",
-    "templates": "3.0.1",
-    "backend": "3.0.0"
+    "menu": "3.1.0",
+    "templates": "3.1.0",
+    "backend": "3.1.0"
   }
 }
