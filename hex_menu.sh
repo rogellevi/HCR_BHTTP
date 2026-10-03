@@ -1,8 +1,9 @@
 #!/bin/bash
 
 # ═══════════════════════════════════════════════════════════════
-#  HEX MANAGER - MENÚ DE GESTIÓN COMPLETO (v3.0)
+#  HEX MANAGER - MENÚ DE GESTIÓN COMPLETO (v3.0.0)
 #  Repositorio: https://github.com/rogellevi/HCR_BHTTP
+#  Con sistema de actualización automática
 # ═══════════════════════════════════════════════════════════════
 
 RED='\033[38;5;203m'; GREEN='\033[38;5;84m'; YELLOW='\033[38;5;221m'
@@ -17,6 +18,13 @@ USER_GROUP="hexusers"
 CLEANUP_SCRIPT="/usr/local/bin/hex_cleanup.sh"
 CLEANUP_LOG="/var/log/hex-cleanup.log"
 WEBPANEL_SERVICE="hex-webpanel.service"
+
+# ═══════════════════════════════════════════════════════════════
+#  CONFIGURACIÓN DE ACTUALIZACIONES
+# ═══════════════════════════════════════════════════════════════
+HEX_VERSION="3.0.0"
+GITHUB_REPO="rogellevi/HCR_BHTTP"
+GITHUB_RAW="https://raw.githubusercontent.com/${GITHUB_REPO}/main"
 
 mkdir -p /etc/hex
 touch "$USER_DB" && chmod 600 "$USER_DB"
@@ -77,6 +85,274 @@ get_svc_status() {
     else echo "${RED}● INACTIVO${NC} (0/$total)"; fi
 }
 
+# ═══════════════════════════════════════════════════════════════
+#  SISTEMA DE ACTUALIZACIÓN AUTOMÁTICA
+# ═══════════════════════════════════════════════════════════════
+
+verificar_actualizaciones() {
+    ui_info "Verificando actualizaciones disponibles..."
+    
+    local remote_info=$(curl -fsSL --connect-timeout 10 "${GITHUB_RAW}/version.json" 2>/dev/null)
+    
+    if [ -z "$remote_info" ]; then
+        ui_error "No se pudo conectar al repositorio"
+        return 1
+    fi
+    
+    local remote_version=$(echo "$remote_info" | grep -o '"version": *"[^"]*"' | head -1 | cut -d'"' -f4)
+    local changelog=$(echo "$remote_info" | grep -o '"changelog": *"[^"]*"' | head -1 | cut -d'"' -f4)
+    
+    if [ -z "$remote_version" ]; then
+        ui_error "No se pudo obtener la versión remota"
+        return 1
+    fi
+    
+    if [ "$remote_version" != "$HEX_VERSION" ]; then
+        echo ""
+        ui_fila "  ${YELLOW}⚠ Nueva versión disponible: ${BOLD}$remote_version${NC}"
+        ui_fila "  ${GRIS}Versión actual: $HEX_VERSION${NC}"
+        ui_fila "  ${GRIS}Cambios: $changelog${NC}"
+        ui_fila ""
+        return 0
+    else
+        ui_ok "Estás usando la última versión ($HEX_VERSION)"
+        return 1
+    fi
+}
+
+menu_actualizaciones() {
+    clear; ui_top; ui_titulo "ACTUALIZACIONES"; ui_sep; ui_fila ""
+    
+    ui_fila "  ${BOLD}Versión actual:${NC} ${YELLOW}$HEX_VERSION${NC}"
+    ui_fila ""
+    
+    if verificar_actualizaciones; then
+        ui_sep; ui_fila ""
+        
+        ui_opcion "1" "Actualizar menú HEX (hex_menu.sh)"
+        ui_opcion "2" "Actualizar templates del Panel Web"
+        ui_opcion "3" "Actualizar backend del Panel Web (app.py)"
+        ui_opcion "4" "Actualizar TODO (recomendado)"
+        ui_opcion "5" "Ver changelog completo"
+        ui_opcion "0" "Atrás"
+        
+        ui_bot; echo ""
+        echo -ne "  ${CYAN}►${NC} Selecciona opción: "; read -r opt
+        
+        case "$opt" in
+            1) actualizar_menu ;;
+            2) actualizar_templates ;;
+            3) actualizar_backend ;;
+            4) actualizar_todo ;;
+            5) ver_changelog ;;
+            0) menu_principal ;;
+            *) echo -e "  ${RED}✗ Opción inválida${NC}"; pause_return; menu_actualizaciones ;;
+        esac
+    else
+        ui_sep; ui_fila ""
+        ui_opcion "0" "Atrás"
+        ui_bot; echo ""
+        echo -ne "  ${CYAN}►${NC} Selecciona opción: "; read -r opt
+        case "$opt" in
+            0) menu_principal ;;
+            *) menu_actualizaciones ;;
+        esac
+    fi
+}
+
+actualizar_menu() {
+    clear; ui_top; ui_titulo "ACTUALIZAR MENÚ"; ui_sep; ui_fila ""
+    ui_info "Descargando nueva versión del menú..."
+    
+    cp /usr/local/bin/hex_menu /usr/local/bin/hex_menu.backup.$(date +%Y%m%d_%H%M%S) 2>/dev/null
+    
+    if curl -fsSL "${GITHUB_RAW}/hex_menu.sh" -o /tmp/hex_menu_new.sh 2>/dev/null; then
+        if bash -n /tmp/hex_menu_new.sh 2>/dev/null; then
+            mv /tmp/hex_menu_new.sh /usr/local/bin/hex_menu
+            chmod +x /usr/local/bin/hex_menu
+            ui_ok "Menú actualizado correctamente"
+            ui_fila "  ${YELLOW}⚠ Reinicia el menú para aplicar cambios${NC}"
+            ui_fila "  ${GRIS}Backup guardado en: /usr/local/bin/hex_menu.backup.*${NC}"
+        else
+            ui_error "El archivo descargado tiene errores de sintaxis"
+            ui_info "No se aplicó la actualización"
+            rm -f /tmp/hex_menu_new.sh
+        fi
+    else
+        ui_error "Error al descargar el menú"
+    fi
+    
+    ui_fila ""; pause_return
+    menu_actualizaciones
+}
+
+actualizar_templates() {
+    clear; ui_top; ui_titulo "ACTUALIZAR TEMPLATES"; ui_sep; ui_fila ""
+    
+    if [ ! -d "/opt/hex-webpanel/templates" ]; then
+        ui_error "El Panel Web no está instalado"
+        pause_return
+        menu_actualizaciones
+        return
+    fi
+    
+    ui_info "Descargando nuevos templates..."
+    
+    local backup_dir="/opt/hex-webpanel/templates.backup.$(date +%Y%m%d_%H%M%S)"
+    mkdir -p "$backup_dir"
+    cp -r /opt/hex-webpanel/templates/* "$backup_dir/" 2>/dev/null
+    
+    local success=true
+    
+    if curl -fsSL "${GITHUB_RAW}/templates/login.html" -o /opt/hex-webpanel/templates/login.html 2>/dev/null; then
+        ui_ok "login.html actualizado"
+    else
+        ui_error "Error al descargar login.html"
+        success=false
+    fi
+    
+    if curl -fsSL "${GITHUB_RAW}/templates/dashboard.html" -o /opt/hex-webpanel/templates/dashboard.html 2>/dev/null; then
+        ui_ok "dashboard.html actualizado"
+    else
+        ui_error "Error al descargar dashboard.html"
+        success=false
+    fi
+    
+    if [ "$success" = true ]; then
+        ui_info "Reiniciando Panel Web..."
+        systemctl restart hex-webpanel.service 2>/dev/null
+        ui_ok "Templates actualizados y panel reiniciado"
+    else
+        ui_error "Algunos templates no se pudieron actualizar"
+    fi
+    
+    ui_fila ""; pause_return
+    menu_actualizaciones
+}
+
+actualizar_backend() {
+    clear; ui_top; ui_titulo "ACTUALIZAR BACKEND"; ui_sep; ui_fila ""
+    
+    if [ ! -f "/opt/hex-webpanel/app.py" ]; then
+        ui_error "El Panel Web no está instalado"
+        pause_return
+        menu_actualizaciones
+        return
+    fi
+    
+    ui_info "Descargando nuevo backend..."
+    
+    cp /opt/hex-webpanel/app.py /opt/hex-webpanel/app.py.backup.$(date +%Y%m%d_%H%M%S) 2>/dev/null
+    
+    if curl -fsSL "${GITHUB_RAW}/app.py" -o /tmp/app_new.py 2>/dev/null; then
+        if python3 -m py_compile /tmp/app_new.py 2>/dev/null; then
+            mv /tmp/app_new.py /opt/hex-webpanel/app.py
+            ui_info "Reiniciando Panel Web..."
+            systemctl restart hex-webpanel.service 2>/dev/null
+            ui_ok "Backend actualizado correctamente"
+        else
+            ui_error "El archivo descargado tiene errores de sintaxis"
+            ui_info "No se aplicó la actualización"
+            rm -f /tmp/app_new.py
+        fi
+    else
+        ui_error "Error al descargar el backend"
+    fi
+    
+    ui_fila ""; pause_return
+    menu_actualizaciones
+}
+
+actualizar_todo() {
+    clear; ui_top; ui_titulo "ACTUALIZACIÓN COMPLETA"; ui_sep; ui_fila ""
+    
+    echo -ne "  ${YELLOW}⚠ Esto actualizará menú, templates y backend. ¿Continuar? (s/n):${NC} "
+    read -r confirm
+    
+    if [ "$confirm" != "s" ] && [ "$confirm" != "S" ]; then
+        ui_info "Cancelado"
+        pause_return
+        menu_actualizaciones
+        return
+    fi
+    
+    ui_info "Iniciando actualización completa..."
+    ui_fila ""
+    
+    ui_info "[1/3] Actualizando menú..."
+    cp /usr/local/bin/hex_menu /usr/local/bin/hex_menu.backup.$(date +%Y%m%d_%H%M%S) 2>/dev/null
+    if curl -fsSL "${GITHUB_RAW}/hex_menu.sh" -o /tmp/hex_menu_new.sh 2>/dev/null; then
+        if bash -n /tmp/hex_menu_new.sh 2>/dev/null; then
+            mv /tmp/hex_menu_new.sh /usr/local/bin/hex_menu
+            chmod +x /usr/local/bin/hex_menu
+            ui_ok "Menú actualizado"
+        else
+            ui_error "Error de sintaxis en menú descargado"
+        fi
+    else
+        ui_error "Error al actualizar menú"
+    fi
+    
+    if [ -d "/opt/hex-webpanel" ]; then
+        ui_info "[2/3] Actualizando templates..."
+        local backup_dir="/opt/hex-webpanel/templates.backup.$(date +%Y%m%d_%H%M%S)"
+        mkdir -p "$backup_dir"
+        cp -r /opt/hex-webpanel/templates/* "$backup_dir/" 2>/dev/null
+        
+        curl -fsSL "${GITHUB_RAW}/templates/login.html" -o /opt/hex-webpanel/templates/login.html 2>/dev/null && ui_ok "login.html actualizado" || ui_error "Error en login.html"
+        curl -fsSL "${GITHUB_RAW}/templates/dashboard.html" -o /opt/hex-webpanel/templates/dashboard.html 2>/dev/null && ui_ok "dashboard.html actualizado" || ui_error "Error en dashboard.html"
+        
+        ui_info "[3/3] Actualizando backend..."
+        cp /opt/hex-webpanel/app.py /opt/hex-webpanel/app.py.backup.$(date +%Y%m%d_%H%M%S) 2>/dev/null
+        if curl -fsSL "${GITHUB_RAW}/app.py" -o /tmp/app_new.py 2>/dev/null; then
+            if python3 -m py_compile /tmp/app_new.py 2>/dev/null; then
+                mv /tmp/app_new.py /opt/hex-webpanel/app.py
+                ui_ok "Backend actualizado"
+            else
+                ui_error "Error de sintaxis en backend"
+            fi
+        else
+            ui_error "Error al actualizar backend"
+        fi
+        
+        ui_info "Reiniciando Panel Web..."
+        systemctl restart hex-webpanel.service 2>/dev/null
+        ui_ok "Panel Web reiniciado"
+    else
+        ui_info "[2/3] Panel Web no instalado, omitiendo..."
+        ui_info "[3/3] Panel Web no instalado, omitiendo..."
+    fi
+    
+    ui_fila ""
+    ui_ok "Actualización completa finalizada"
+    ui_fila "  ${YELLOW}⚠ Reinicia el menú para aplicar todos los cambios${NC}"
+    ui_fila "  ${GRIS}Backups guardados en archivos .backup.*${NC}"
+    
+    ui_fila ""; pause_return
+    menu_actualizaciones
+}
+
+ver_changelog() {
+    clear; ui_top; ui_titulo "CHANGELOG"; ui_sep; ui_fila ""
+    
+    ui_info "Descargando changelog..."
+    local changelog=$(curl -fsSL "${GITHUB_RAW}/CHANGELOG.md" 2>/dev/null)
+    
+    if [ -n "$changelog" ]; then
+        echo ""
+        echo "$changelog" | less -R
+    else
+        ui_error "No se pudo descargar el changelog"
+        pause_return
+    fi
+    
+    menu_actualizaciones
+}
+
+# ═══════════════════════════════════════════════════════════════
+#  MENÚ PRINCIPAL
+# ═══════════════════════════════════════════════════════════════
+
 menu_principal() {
     clear; ui_top; ui_titulo "HEX MANAGER"; ui_sep
     
@@ -95,6 +371,7 @@ menu_principal() {
     ui_fila "  ${CYAN}UDPGW${NC}     - $udpgw_st"
     ui_fila "  ${CYAN}WEB PANEL${NC} - Puerto 9000     $webpanel_status"
     ui_fila "  ${CYAN}LIMPIADOR${NC} - Diario 03:00    $cleanup_status"
+    ui_fila "  ${CYAN}VERSIÓN${NC}   - v$HEX_VERSION"
     ui_fila ""; ui_sep
     
     ui_opcion "1" "Gestionar BHTTP"
@@ -106,7 +383,8 @@ menu_principal() {
     ui_opcion "7" "Listar usuarios activos"
     ui_opcion "8" "Limpieza automática"
     ui_opcion "9" "Ver logs"
-    ui_opcion "10" "Desinstalar todo"
+    ui_opcion "10" "Buscar actualizaciones"
+    ui_opcion "11" "Desinstalar todo"
     ui_opcion "0" "Salir"
     
     ui_bot; echo ""
@@ -118,10 +396,16 @@ menu_principal() {
         3) menu_generico "udpgw" "UDPGW" "$UDPGW_PORTS_CONF" "udp" ;;
         4) gestionar_webpanel ;;
         5) agregar_usuario ;; 6) eliminar_usuario ;; 7) listar_usuarios ;;
-        8) gestionar_limpieza ;; 9) ver_logs ;; 10) desinstalar ;; 0) exit 0 ;;
+        8) gestionar_limpieza ;; 9) ver_logs ;;
+        10) menu_actualizaciones ;;
+        11) desinstalar ;; 0) exit 0 ;;
         *) echo -e "  ${RED}✗ Opción inválida${NC}"; pause_return; menu_principal ;;
     esac
 }
+
+# ═══════════════════════════════════════════════════════════════
+#  GESTIÓN GENÉRICA DE SERVICIOS (BHTTP, HCR, UDPGW)
+# ═══════════════════════════════════════════════════════════════
 
 menu_generico() {
     local svc=$1 title=$2 conf=$3 proto=$4
@@ -507,100 +791,37 @@ EOF_APP
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+        body { min-height: 100vh; display: flex; align-items: center; justify-content: center;
             background: linear-gradient(-45deg, #0a0a0a, #1a1a2e, #16213e, #0f3460);
-            background-size: 400% 400%;
-            animation: gradientBG 15s ease infinite;
-            font-family: 'Segoe UI', system-ui, sans-serif;
-            padding: 20px;
-            overflow-x: hidden;
-        }
-        @keyframes gradientBG {
-            0% { background-position: 0% 50%; }
-            50% { background-position: 100% 50%; }
-            100% { background-position: 0% 50%; }
-        }
-        .login-card {
-            background: rgba(30, 30, 46, 0.7);
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 20px;
-            padding: 40px 35px;
-            width: 100%;
-            max-width: 400px;
-            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
-            animation: slideIn 0.6s ease-out;
-        }
-        @keyframes slideIn {
-            from { opacity: 0; transform: translateY(-30px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
+            background-size: 400% 400%; animation: gradientBG 15s ease infinite;
+            font-family: 'Segoe UI', system-ui, sans-serif; padding: 20px; overflow-x: hidden; }
+        @keyframes gradientBG { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
+        .login-card { background: rgba(30, 30, 46, 0.7); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 20px; padding: 40px 35px;
+            width: 100%; max-width: 400px; box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5); animation: slideIn 0.6s ease-out; }
+        @keyframes slideIn { from { opacity: 0; transform: translateY(-30px); } to { opacity: 1; transform: translateY(0); } }
         .logo-container { text-align: center; margin-bottom: 30px; }
-        .logo-hex {
-            width: 80px; height: 80px; margin: 0 auto 15px;
+        .logo-hex { width: 80px; height: 80px; margin: 0 auto 15px;
             background: linear-gradient(135deg, #00c853, #00e676);
             clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
-            display: flex; align-items: center; justify-content: center;
-            animation: pulse 2s ease-in-out infinite;
-        }
-        @keyframes pulse {
-            0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(0, 200, 83, 0.7); }
-            50% { transform: scale(1.05); box-shadow: 0 0 30px 10px rgba(0, 200, 83, 0); }
-        }
+            display: flex; align-items: center; justify-content: center; animation: pulse 2s ease-in-out infinite; }
+        @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
         .logo-hex i { font-size: 40px; color: #fff; }
         .title { color: #fff; font-size: 28px; font-weight: 700; margin-bottom: 5px; }
         .subtitle { color: #8b8b9e; font-size: 14px; }
-        .form-floating > .form-control {
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            color: #fff; border-radius: 12px; height: 58px;
-            padding: 1rem .75rem; transition: all 0.3s ease;
-        }
-        .form-floating > .form-control:focus {
-            background: rgba(255, 255, 255, 0.08);
-            border-color: #00c853;
-            box-shadow: 0 0 0 3px rgba(0, 200, 83, 0.2);
-            color: #fff;
-        }
+        .form-floating > .form-control { background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #fff; border-radius: 12px; height: 58px; padding: 1rem .75rem; transition: all 0.3s ease; }
+        .form-floating > .form-control:focus { background: rgba(255, 255, 255, 0.08); border-color: #00c853;
+            box-shadow: 0 0 0 3px rgba(0, 200, 83, 0.2); color: #fff; }
         .form-floating > label { color: #8b8b9e; padding: 1rem .75rem; }
-        .form-floating > .form-control:focus ~ label,
-        .form-floating > .form-control:not(:placeholder-shown) ~ label { color: #00c853; }
-        .btn-login {
-            background: linear-gradient(135deg, #00c853, #00e676);
-            border: none; color: #fff; font-weight: 600;
-            padding: 14px; border-radius: 12px; width: 100%;
-            font-size: 16px; transition: all 0.3s ease; margin-top: 10px;
-        }
-        .btn-login:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 25px rgba(0, 200, 83, 0.4);
-            color: #fff;
-        }
-        .btn-login:active { transform: translateY(0); }
-        .alert-error {
-            background: rgba(255, 82, 82, 0.15);
-            border: 1px solid rgba(255, 82, 82, 0.3);
-            color: #ff6b6b; border-radius: 12px;
-            padding: 12px 15px; margin-bottom: 20px;
-            font-size: 14px; text-align: center;
-            animation: shake 0.5s ease-in-out;
-        }
-        @keyframes shake {
-            0%, 100% { transform: translateX(0); }
-            25% { transform: translateX(-10px); }
-            75% { transform: translateX(10px); }
-        }
+        .form-floating > .form-control:focus ~ label, .form-floating > .form-control:not(:placeholder-shown) ~ label { color: #00c853; }
+        .btn-login { background: linear-gradient(135deg, #00c853, #00e676); border: none; color: #fff; font-weight: 600;
+            padding: 14px; border-radius: 12px; width: 100%; font-size: 16px; transition: all 0.3s ease; margin-top: 10px; }
+        .btn-login:hover { transform: translateY(-2px); box-shadow: 0 10px 25px rgba(0, 200, 83, 0.4); color: #fff; }
+        .alert-error { background: rgba(255, 82, 82, 0.15); border: 1px solid rgba(255, 82, 82, 0.3);
+            color: #ff6b6b; border-radius: 12px; padding: 12px 15px; margin-bottom: 20px; font-size: 14px; text-align: center; }
         .footer-text { text-align: center; color: #5a5a6e; font-size: 12px; margin-top: 25px; }
-        .input-icon {
-            position: absolute; right: 15px; top: 50%;
-            transform: translateY(-50%); color: #5a5a6e;
-            z-index: 5; pointer-events: none;
-        }
+        .input-icon { position: absolute; right: 15px; top: 50%; transform: translateY(-50%); color: #5a5a6e; z-index: 5; pointer-events: none; }
     </style>
 </head>
 <body>
@@ -610,22 +831,16 @@ EOF_APP
             <h1 class="title">Hex Panel</h1>
             <p class="subtitle">Panel de Administración</p>
         </div>
-        {% with messages = get_flashed_messages() %}
-          {% if messages %}
-            <div class="alert-error">
-                <i class="bi bi-exclamation-triangle-fill"></i> {{ messages[0] }}
-            </div>
-          {% endif %}
-        {% endwith %}
+        {% with messages = get_flashed_messages() %}{% if messages %}
+            <div class="alert-error"><i class="bi bi-exclamation-triangle-fill"></i> {{ messages[0] }}</div>
+        {% endif %}{% endwith %}
         <form method="POST">
             <div class="form-floating mb-3 position-relative">
                 <input type="password" class="form-control" id="password" name="password" placeholder="Contraseña" required autofocus>
                 <label for="password"><i class="bi bi-lock-fill me-2"></i>Contraseña</label>
                 <i class="bi bi-key-fill input-icon"></i>
             </div>
-            <button type="submit" class="btn btn-login">
-                <i class="bi bi-box-arrow-in-right me-2"></i>Iniciar Sesión
-            </button>
+            <button type="submit" class="btn btn-login"><i class="bi bi-box-arrow-in-right me-2"></i>Iniciar Sesión</button>
         </form>
         <p class="footer-text"><i class="bi bi-shield-lock-fill"></i> Acceso restringido · v3.0</p>
     </div>
@@ -647,41 +862,19 @@ EOF_LOGIN
         .card { background-color: #1e1e1e; border: 1px solid #333; transition: transform 0.2s ease; }
         .card:hover { transform: translateY(-2px); }
         .text-success { color: #00c853 !important; }
-        .alert { position: relative; z-index: 1000; }
-        .btn-add-user {
-            background: linear-gradient(135deg, #00c853, #00e676);
-            border: none; color: #fff; font-weight: 600;
-            padding: 12px 24px; border-radius: 10px;
-            transition: all 0.3s ease;
-        }
-        .btn-add-user:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 20px rgba(0, 200, 83, 0.4);
-            color: #fff;
-        }
+        .btn-add-user { background: linear-gradient(135deg, #00c853, #00e676); border: none; color: #fff;
+            font-weight: 600; padding: 12px 24px; border-radius: 10px; transition: all 0.3s ease; }
+        .btn-add-user:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(0, 200, 83, 0.4); color: #fff; }
         .modal-content { background: #1e1e1e; border: 1px solid #333; border-radius: 15px; }
-        .modal-header {
-            border-bottom: 1px solid #333;
-            background: linear-gradient(135deg, rgba(0, 200, 83, 0.1), transparent);
-            border-radius: 15px 15px 0 0;
-        }
+        .modal-header { border-bottom: 1px solid #333;
+            background: linear-gradient(135deg, rgba(0, 200, 83, 0.1), transparent); border-radius: 15px 15px 0 0; }
         .modal-title { color: #00c853; font-weight: 600; }
-        .modal-body .form-control {
-            background: #121212; border: 1px solid #333;
-            color: #e0e0e0; border-radius: 8px;
-        }
-        .modal-body .form-control:focus {
-            border-color: #00c853;
-            box-shadow: 0 0 0 3px rgba(0, 200, 83, 0.2);
-            background: #121212; color: #e0e0e0;
-        }
+        .modal-body .form-control { background: #121212; border: 1px solid #333; color: #e0e0e0; border-radius: 8px; }
+        .modal-body .form-control:focus { border-color: #00c853; box-shadow: 0 0 0 3px rgba(0, 200, 83, 0.2); background: #121212; color: #e0e0e0; }
         .modal-body label { color: #8b8b9e; font-size: 13px; font-weight: 500; }
         .btn-close-white { filter: invert(1); }
-        .service-icon {
-            width: 40px; height: 40px; border-radius: 10px;
-            display: inline-flex; align-items: center; justify-content: center;
-            margin-right: 10px; font-size: 20px;
-        }
+        .service-icon { width: 40px; height: 40px; border-radius: 10px;
+            display: inline-flex; align-items: center; justify-content: center; margin-right: 10px; font-size: 20px; }
         .icon-bhttp { background: rgba(0, 200, 83, 0.15); color: #00c853; }
         .icon-hcr { background: rgba(0, 188, 212, 0.15); color: #00bcd4; }
         .icon-udpgw { background: rgba(255, 193, 7, 0.15); color: #ffc107; }
@@ -694,173 +887,136 @@ EOF_LOGIN
             <a href="/logout" class="btn btn-outline-danger btn-sm"><i class="bi bi-box-arrow-right"></i> Salir</a>
         </div>
     </nav>
-
     <div class="container mt-3 mt-md-4">
-        {% with messages = get_flashed_messages() %}
-          {% if messages %}
-            {% for msg in messages %}
-              <div class="alert alert-{% if 'error' in msg.lower() or '⚠' in msg %}warning{% else %}success{% endif %} alert-dismissible fade show" role="alert">
-                {{ msg }}
-                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-              </div>
-            {% endfor %}
-          {% endif %}
-        {% endwith %}
-
+        {% with messages = get_flashed_messages() %}{% if messages %}{% for msg in messages %}
+            <div class="alert alert-{% if 'error' in msg.lower() or '⚠' in msg %}warning{% else %}success{% endif %} alert-dismissible fade show" role="alert">
+                {{ msg }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+        {% endfor %}{% endif %}{% endwith %}
         <h5 class="mb-3"><i class="bi bi-hdd-network"></i> Servicios Activos</h5>
         <div class="row g-3 mb-4">
             <div class="col-12 col-md-6 col-lg-4">
-                <div class="card h-100">
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-center mb-2">
-                            <h5 class="card-title mb-0 d-flex align-items-center">
-                                <span class="service-icon icon-bhttp"><i class="bi bi-globe"></i></span>
-                                <span class="text-success">BHTTP</span>
-                            </h5>
-                            <span class="badge bg-success">{{ stats.bhttp_active }}/{{ stats.bhttp_ports|length }}</span>
-                        </div>
-                        <div class="mb-3">
-                            <small class="text-muted">Puertos:</small>
-                            <div class="d-flex flex-wrap gap-1 mt-1">
-                                {% for p in stats.bhttp_ports %}<span class="badge bg-secondary">{{ p }}</span>{% else %}<span class="text-muted small">Ninguno</span>{% endfor %}
-                            </div>
-                        </div>
-                        <div class="d-flex gap-2">
-                            <a href="/control_service/bhttp/start" class="btn btn-sm btn-outline-success flex-fill" onclick="return confirm('¿Iniciar BHTTP?')"><i class="bi bi-play-fill"></i> Iniciar</a>
-                            <a href="/control_service/bhttp/stop" class="btn btn-sm btn-outline-warning flex-fill" onclick="return confirm('¿Detener BHTTP?')"><i class="bi bi-stop-fill"></i> Detener</a>
-                            <a href="/control_service/bhttp/restart" class="btn btn-sm btn-outline-info flex-fill" onclick="return confirm('¿Reiniciar BHTTP?')"><i class="bi bi-arrow-clockwise"></i></a>
+                <div class="card h-100"><div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h5 class="card-title mb-0 d-flex align-items-center">
+                            <span class="service-icon icon-bhttp"><i class="bi bi-globe"></i></span><span class="text-success">BHTTP</span>
+                        </h5>
+                        <span class="badge bg-success">{{ stats.bhttp_active }}/{{ stats.bhttp_ports|length }}</span>
+                    </div>
+                    <div class="mb-3"><small class="text-muted">Puertos:</small>
+                        <div class="d-flex flex-wrap gap-1 mt-1">
+                            {% for p in stats.bhttp_ports %}<span class="badge bg-secondary">{{ p }}</span>{% else %}<span class="text-muted small">Ninguno</span>{% endfor %}
                         </div>
                     </div>
-                </div>
+                    <div class="d-flex gap-2">
+                        <a href="/control_service/bhttp/start" class="btn btn-sm btn-outline-success flex-fill" onclick="return confirm('¿Iniciar BHTTP?')"><i class="bi bi-play-fill"></i> Iniciar</a>
+                        <a href="/control_service/bhttp/stop" class="btn btn-sm btn-outline-warning flex-fill" onclick="return confirm('¿Detener BHTTP?')"><i class="bi bi-stop-fill"></i> Detener</a>
+                        <a href="/control_service/bhttp/restart" class="btn btn-sm btn-outline-info flex-fill" onclick="return confirm('¿Reiniciar BHTTP?')"><i class="bi bi-arrow-clockwise"></i></a>
+                    </div>
+                </div></div>
             </div>
-
             <div class="col-12 col-md-6 col-lg-4">
-                <div class="card h-100">
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-center mb-2">
-                            <h5 class="card-title mb-0 d-flex align-items-center">
-                                <span class="service-icon icon-hcr"><i class="bi bi-shield-lock"></i></span>
-                                <span class="text-info">HCR</span>
-                            </h5>
-                            <span class="badge bg-info text-dark">{{ stats.hcr_active }}/{{ stats.hcr_ports|length }}</span>
-                        </div>
-                        <div class="mb-3">
-                            <small class="text-muted">Puertos:</small>
-                            <div class="d-flex flex-wrap gap-1 mt-1">
-                                {% for p in stats.hcr_ports %}<span class="badge bg-secondary">{{ p }}</span>{% else %}<span class="text-muted small">Ninguno</span>{% endfor %}
-                            </div>
-                        </div>
-                        <div class="d-flex gap-2">
-                            <a href="/control_service/hcr/start" class="btn btn-sm btn-outline-success flex-fill" onclick="return confirm('¿Iniciar HCR?')"><i class="bi bi-play-fill"></i> Iniciar</a>
-                            <a href="/control_service/hcr/stop" class="btn btn-sm btn-outline-warning flex-fill" onclick="return confirm('¿Detener HCR?')"><i class="bi bi-stop-fill"></i> Detener</a>
-                            <a href="/control_service/hcr/restart" class="btn btn-sm btn-outline-info flex-fill" onclick="return confirm('¿Reiniciar HCR?')"><i class="bi bi-arrow-clockwise"></i></a>
+                <div class="card h-100"><div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h5 class="card-title mb-0 d-flex align-items-center">
+                            <span class="service-icon icon-hcr"><i class="bi bi-shield-lock"></i></span><span class="text-info">HCR</span>
+                        </h5>
+                        <span class="badge bg-info text-dark">{{ stats.hcr_active }}/{{ stats.hcr_ports|length }}</span>
+                    </div>
+                    <div class="mb-3"><small class="text-muted">Puertos:</small>
+                        <div class="d-flex flex-wrap gap-1 mt-1">
+                            {% for p in stats.hcr_ports %}<span class="badge bg-secondary">{{ p }}</span>{% else %}<span class="text-muted small">Ninguno</span>{% endfor %}
                         </div>
                     </div>
-                </div>
+                    <div class="d-flex gap-2">
+                        <a href="/control_service/hcr/start" class="btn btn-sm btn-outline-success flex-fill" onclick="return confirm('¿Iniciar HCR?')"><i class="bi bi-play-fill"></i> Iniciar</a>
+                        <a href="/control_service/hcr/stop" class="btn btn-sm btn-outline-warning flex-fill" onclick="return confirm('¿Detener HCR?')"><i class="bi bi-stop-fill"></i> Detener</a>
+                        <a href="/control_service/hcr/restart" class="btn btn-sm btn-outline-info flex-fill" onclick="return confirm('¿Reiniciar HCR?')"><i class="bi bi-arrow-clockwise"></i></a>
+                    </div>
+                </div></div>
             </div>
-
             <div class="col-12 col-md-6 col-lg-4">
-                <div class="card h-100">
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-center mb-2">
-                            <h5 class="card-title mb-0 d-flex align-items-center">
-                                <span class="service-icon icon-udpgw"><i class="bi bi-wifi"></i></span>
-                                <span class="text-warning">UDPGW</span>
-                            </h5>
-                            <span class="badge bg-warning text-dark">{{ stats.udpgw_active }}/{{ stats.udpgw_ports|length }}</span>
-                        </div>
-                        <div class="mb-3">
-                            <small class="text-muted">Puertos:</small>
-                            <div class="d-flex flex-wrap gap-1 mt-1">
-                                {% for p in stats.udpgw_ports %}<span class="badge bg-secondary">{{ p }}</span>{% else %}<span class="text-muted small">Ninguno</span>{% endfor %}
-                            </div>
-                        </div>
-                        <div class="d-flex gap-2">
-                            <a href="/control_service/udpgw/start" class="btn btn-sm btn-outline-success flex-fill" onclick="return confirm('¿Iniciar UDPGW?')"><i class="bi bi-play-fill"></i> Iniciar</a>
-                            <a href="/control_service/udpgw/stop" class="btn btn-sm btn-outline-warning flex-fill" onclick="return confirm('¿Detener UDPGW?')"><i class="bi bi-stop-fill"></i> Detener</a>
-                            <a href="/control_service/udpgw/restart" class="btn btn-sm btn-outline-info flex-fill" onclick="return confirm('¿Reiniciar UDPGW?')"><i class="bi bi-arrow-clockwise"></i></a>
+                <div class="card h-100"><div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h5 class="card-title mb-0 d-flex align-items-center">
+                            <span class="service-icon icon-udpgw"><i class="bi bi-wifi"></i></span><span class="text-warning">UDPGW</span>
+                        </h5>
+                        <span class="badge bg-warning text-dark">{{ stats.udpgw_active }}/{{ stats.udpgw_ports|length }}</span>
+                    </div>
+                    <div class="mb-3"><small class="text-muted">Puertos:</small>
+                        <div class="d-flex flex-wrap gap-1 mt-1">
+                            {% for p in stats.udpgw_ports %}<span class="badge bg-secondary">{{ p }}</span>{% else %}<span class="text-muted small">Ninguno</span>{% endfor %}
                         </div>
                     </div>
-                </div>
+                    <div class="d-flex gap-2">
+                        <a href="/control_service/udpgw/start" class="btn btn-sm btn-outline-success flex-fill" onclick="return confirm('¿Iniciar UDPGW?')"><i class="bi bi-play-fill"></i> Iniciar</a>
+                        <a href="/control_service/udpgw/stop" class="btn btn-sm btn-outline-warning flex-fill" onclick="return confirm('¿Detener UDPGW?')"><i class="bi bi-stop-fill"></i> Detener</a>
+                        <a href="/control_service/udpgw/restart" class="btn btn-sm btn-outline-info flex-fill" onclick="return confirm('¿Reiniciar UDPGW?')"><i class="bi bi-arrow-clockwise"></i></a>
+                    </div>
+                </div></div>
             </div>
         </div>
-
         <div class="row g-3">
             <div class="col-12">
-                <div class="card">
-                    <div class="card-body">
-                        <div class="d-flex flex-column flex-sm-row justify-content-between align-items-start align-items-sm-center mb-3 gap-2">
-                            <h5 class="card-title mb-0">
-                                <i class="bi bi-people-fill text-success"></i> Usuarios Activos 
-                                <span class="badge bg-secondary ms-1">{{ stats.users }}</span>
-                            </h5>
-                            <button type="button" class="btn btn-add-user" data-bs-toggle="modal" data-bs-target="#addUserModal">
-                                <i class="bi bi-person-plus-fill me-1"></i> Agregar Usuario
-                            </button>
-                        </div>
-                        <div class="table-responsive">
-                            <table class="table table-dark table-hover table-sm align-middle mb-0">
-                                <thead>
-                                    <tr>
-                                        <th><i class="bi bi-person-circle"></i> Usuario</th>
-                                        <th><i class="bi bi-calendar-event"></i> Expiración</th>
-                                        <th class="text-end"><i class="bi bi-gear"></i> Acción</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {% for u in users %}
-                                    <tr>
-                                        <td><strong>{{ u.user }}</strong></td>
-                                        <td><span class="badge bg-secondary">{{ u.exp }}</span></td>
-                                        <td class="text-end">
-                                            <a href="/delete_user/{{ u.user }}" class="btn btn-sm btn-danger" onclick="return confirm('¿Eliminar a {{ u.user }}?');">
-                                                <i class="bi bi-trash"></i> <span class="d-none d-sm-inline">Eliminar</span>
-                                            </a>
-                                        </td>
-                                    </tr>
-                                    {% else %}
-                                    <tr><td colspan="3" class="text-center text-muted py-4">
-                                        <i class="bi bi-inbox" style="font-size: 2rem;"></i><br>
-                                        No hay usuarios registrados. Haz clic en "Agregar Usuario" para comenzar.
-                                    </td></tr>
-                                    {% endfor %}
-                                </tbody>
-                            </table>
-                        </div>
+                <div class="card"><div class="card-body">
+                    <div class="d-flex flex-column flex-sm-row justify-content-between align-items-start align-items-sm-center mb-3 gap-2">
+                        <h5 class="card-title mb-0"><i class="bi bi-people-fill text-success"></i> Usuarios Activos <span class="badge bg-secondary ms-1">{{ stats.users }}</span></h5>
+                        <button type="button" class="btn btn-add-user" data-bs-toggle="modal" data-bs-target="#addUserModal">
+                            <i class="bi bi-person-plus-fill me-1"></i> Agregar Usuario
+                        </button>
                     </div>
-                </div>
+                    <div class="table-responsive">
+                        <table class="table table-dark table-hover table-sm align-middle mb-0">
+                            <thead><tr>
+                                <th><i class="bi bi-person-circle"></i> Usuario</th>
+                                <th><i class="bi bi-calendar-event"></i> Expiración</th>
+                                <th class="text-end"><i class="bi bi-gear"></i> Acción</th>
+                            </tr></thead>
+                            <tbody>
+                                {% for u in users %}
+                                <tr>
+                                    <td><strong>{{ u.user }}</strong></td>
+                                    <td><span class="badge bg-secondary">{{ u.exp }}</span></td>
+                                    <td class="text-end">
+                                        <a href="/delete_user/{{ u.user }}" class="btn btn-sm btn-danger" onclick="return confirm('¿Eliminar a {{ u.user }}?');">
+                                            <i class="bi bi-trash"></i> <span class="d-none d-sm-inline">Eliminar</span>
+                                        </a>
+                                    </td>
+                                </tr>
+                                {% else %}
+                                <tr><td colspan="3" class="text-center text-muted py-4">
+                                    <i class="bi bi-inbox" style="font-size: 2rem;"></i><br>
+                                    No hay usuarios registrados. Haz clic en "Agregar Usuario" para comenzar.
+                                </td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div></div>
             </div>
         </div>
     </div>
-
-    <div class="modal fade" id="addUserModal" tabindex="-1" aria-labelledby="addUserModalLabel" aria-hidden="true">
+    <div class="modal fade" id="addUserModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title" id="addUserModalLabel">
-                        <i class="bi bi-person-plus-fill"></i> Crear Nuevo Usuario
-                    </h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                    <h5 class="modal-title"><i class="bi bi-person-plus-fill"></i> Crear Nuevo Usuario</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
-                <form action="/add_user" method="POST" id="addUserForm">
+                <form action="/add_user" method="POST">
                     <div class="modal-body">
                         <div class="mb-3">
-                            <label for="username" class="form-label"><i class="bi bi-person"></i> Nombre de usuario</label>
-                            <input type="text" class="form-control" id="username" name="username" 
-                                   placeholder="ej: juan_perez" required pattern="[a-z0-9_-]+" 
-                                   title="Solo letras minúsculas, números, guiones y guiones bajos"
-                                   autocomplete="off">
+                            <label class="form-label"><i class="bi bi-person"></i> Nombre de usuario</label>
+                            <input type="text" class="form-control" name="username" placeholder="ej: juan_perez" required pattern="[a-z0-9_-]+" autocomplete="off">
                             <small class="text-muted">Solo minúsculas, números, _ y -</small>
                         </div>
                         <div class="mb-3">
-                            <label for="password" class="form-label"><i class="bi bi-key"></i> Contraseña</label>
-                            <input type="text" class="form-control" id="password" name="password" 
-                                   placeholder="Contraseña segura" required autocomplete="off">
+                            <label class="form-label"><i class="bi bi-key"></i> Contraseña</label>
+                            <input type="text" class="form-control" name="password" placeholder="Contraseña segura" required autocomplete="off">
                         </div>
                         <div class="mb-3">
-                            <label for="days" class="form-label"><i class="bi bi-calendar3"></i> Días de validez</label>
-                            <input type="number" class="form-control" id="days" name="days" 
-                                   placeholder="30" min="1" value="30" required>
+                            <label class="form-label"><i class="bi bi-calendar3"></i> Días de validez</label>
+                            <input type="number" class="form-control" name="days" placeholder="30" min="1" value="30" required>
                             <small class="text-muted">El usuario expirará automáticamente después de estos días</small>
                         </div>
                         <div class="alert alert-info border-0 mb-0" style="background: rgba(0, 188, 212, 0.1); color: #4dd0e1;">
@@ -869,18 +1025,13 @@ EOF_LOGIN
                         </div>
                     </div>
                     <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
-                            <i class="bi bi-x-circle"></i> Cancelar
-                        </button>
-                        <button type="submit" class="btn btn-success">
-                            <i class="bi bi-check-circle-fill"></i> Crear Usuario
-                        </button>
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal"><i class="bi bi-x-circle"></i> Cancelar</button>
+                        <button type="submit" class="btn btn-success"><i class="bi bi-check-circle-fill"></i> Crear Usuario</button>
                     </div>
                 </form>
             </div>
         </div>
     </div>
-
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
@@ -991,7 +1142,7 @@ gestionar_webpanel() {
 }
 
 # ═══════════════════════════════════════════════════════════════
-#  GESTIÓN DE USUARIOS Y LIMPIEZA
+#  GESTIÓN DE USUARIOS
 # ═══════════════════════════════════════════════════════════════
 
 agregar_usuario() {
@@ -1148,6 +1299,10 @@ desinstalar() {
         echo -e "  ${YELLOW}⚠ Cancelado${NC}"; pause_return; menu_principal
     fi
 }
+
+# ═══════════════════════════════════════════════════════════════
+#  VERIFICACIÓN Y EJECUCIÓN
+# ═══════════════════════════════════════════════════════════════
 
 [ "$EUID" -ne 0 ] && { echo -e "  ${RED}✗ Requiere permisos de root${NC}"; exit 1; }
 menu_principal
