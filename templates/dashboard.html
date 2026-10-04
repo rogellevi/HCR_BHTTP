@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hex Dashboard</title>
+    <title>Dashboard</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@500;700&display=swap" rel="stylesheet">
@@ -327,16 +327,82 @@
             padding: 8px 12px;
             border-radius: 6px;
             cursor: pointer;
-            color: var(--text-primary);
             font-size: 13px;
+            font-weight: 500;
             transition: all 0.2s ease;
+            color: #e0e0e0; /* Color fijo visible en todos los temas */
         }
-        .theme-option:hover { background: var(--bg-tertiary); }
+        .theme-option span {
+            color: #e0e0e0 !important; /* Forzar color del texto */
+        }
+        .theme-option:hover { 
+            background: rgba(255, 255, 255, 0.08); 
+        }
+        .theme-option:hover span {
+            color: #ffffff !important;
+        }
         .theme-option.active { 
-            background: rgba(0, 200, 83, 0.15); 
-            color: var(--accent-green);
+            background: rgba(0, 200, 83, 0.2); 
         }
-        .theme-option i { font-size: 16px; }
+        .theme-option.active span {
+            color: #00c853 !important;
+            font-weight: 600;
+        }
+        .theme-option.active i {
+            color: #00c853 !important;
+        }
+        .theme-option i { 
+            font-size: 16px; 
+            color: #8b8b9e;
+        }
+        
+        /* Ajustes específicos para modo claro */
+        [data-theme="light"] .theme-option {
+            color: #1d1d1f;
+        }
+        [data-theme="light"] .theme-option span {
+            color: #1d1d1f !important;
+        }
+        [data-theme="light"] .theme-option:hover {
+            background: rgba(0, 0, 0, 0.05);
+        }
+        [data-theme="light"] .theme-option:hover span {
+            color: #000000 !important;
+        }
+        [data-theme="light"] .theme-option i {
+            color: #515154;
+        }
+        
+        /* Ajustes específicos para modo gaming */
+        [data-theme="gaming"] .theme-option {
+            color: #00ffff;
+            font-family: 'Rajdhani', sans-serif;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        [data-theme="gaming"] .theme-option span {
+            color: #00ffff !important;
+            text-shadow: 0 0 5px rgba(0, 255, 255, 0.5);
+        }
+        [data-theme="gaming"] .theme-option:hover {
+            background: rgba(255, 0, 255, 0.15);
+        }
+        [data-theme="gaming"] .theme-option:hover span {
+            color: #ff00ff !important;
+            text-shadow: 0 0 10px rgba(255, 0, 255, 0.8);
+        }
+        [data-theme="gaming"] .theme-option.active span {
+            color: #39ff14 !important;
+            text-shadow: 0 0 10px rgba(57, 255, 20, 0.8);
+        }
+        [data-theme="gaming"] .theme-option.active {
+            background: rgba(57, 255, 20, 0.15);
+            border: 1px solid rgba(57, 255, 20, 0.3);
+        }
+        [data-theme="gaming"] .theme-option i {
+            color: #ff00ff;
+            text-shadow: 0 0 5px rgba(255, 0, 255, 0.5);
+        }
         
         /* ═══ BANNER COMPACTO ═══ */
         .version-pill {
@@ -696,7 +762,7 @@
     <nav class="navbar navbar-dark sticky-top">
         <div class="container-fluid">
             <span class="navbar-brand mb-0 h1">
-                <i class="bi bi-hexagon-fill text-success"></i> Hex Web Panel
+                <i class="bi bi-hexagon-fill text-success"></i> Web Panel
             </span>
             <div class="nav-controls">
                 <!-- Auto-refresh toggle -->
@@ -720,7 +786,7 @@
                         </div>
                         <div class="theme-option" data-theme="gaming" onclick="setTheme('gaming')">
                             <i class="bi bi-controller"></i>
-                            <span>Modo Gaming 🎮</span>
+                            <span>Modo Gaming</span>
                         </div>
                     </div>
                 </div>
@@ -810,8 +876,8 @@
                         </div>
                     </div>
                     <div class="d-flex gap-2">
-                        <a href="/control_service/bhttp/start" class="btn btn-sm btn-outline-success flex-fill" onclick="return confirm('¿Iniciar BHTTP?')"><i class="bi bi-play-fill"></i> Iniciar</a>
-                        <a href="/control_service/bhttp/stop" class="btn btn-sm btn-outline-warning flex-fill" onclick="return confirm('¿Detener BHTTP?')"><i class="bi bi-stop-fill"></i> Detener</a>
+                        <a href="/control_service/bhttp/start" class="btn btn-sm btn-outline-success flex-fill" onclick="return confirm('¿Iniciar BHTTP?')"><i class="bi bi-play-fill"></i></a>
+                        <a href="/control_service/bhttp/stop" class="btn btn-sm btn-outline-warning flex-fill" onclick="return confirm('¿Detener BHTTP?')"><i class="bi bi-stop-fill"></i></a>
                         <a href="/control_service/bhttp/restart" class="btn btn-sm btn-outline-info flex-fill" onclick="return confirm('¿Reiniciar BHTTP?')"><i class="bi bi-arrow-clockwise"></i></a>
                     </div>
                 </div></div>
@@ -838,8 +904,8 @@
                         </div>
                     </div>
                     <div class="d-flex gap-2">
-                        <a href="/control_service/hcr/start" class="btn btn-sm btn-outline-success flex-fill" onclick="return confirm('¿Iniciar HCR?')"><i class="bi bi-play-fill"></i> Iniciar</a>
-                        <a href="/control_service/hcr/stop" class="btn btn-sm btn-outline-warning flex-fill" onclick="return confirm('¿Detener HCR?')"><i class="bi bi-stop-fill"></i> Detener</a>
+                        <a href="/control_service/hcr/start" class="btn btn-sm btn-outline-success flex-fill" onclick="return confirm('¿Iniciar HCR?')"><i class="bi bi-play-fill"></i></a>
+                        <a href="/control_service/hcr/stop" class="btn btn-sm btn-outline-warning flex-fill" onclick="return confirm('¿Detener HCR?')"><i class="bi bi-stop-fill"></i></a>
                         <a href="/control_service/hcr/restart" class="btn btn-sm btn-outline-info flex-fill" onclick="return confirm('¿Reiniciar HCR?')"><i class="bi bi-arrow-clockwise"></i></a>
                     </div>
                 </div></div>
@@ -866,8 +932,8 @@
                         </div>
                     </div>
                     <div class="d-flex gap-2">
-                        <a href="/control_service/udpgw/start" class="btn btn-sm btn-outline-success flex-fill" onclick="return confirm('¿Iniciar UDPGW?')"><i class="bi bi-play-fill"></i> Iniciar</a>
-                        <a href="/control_service/udpgw/stop" class="btn btn-sm btn-outline-warning flex-fill" onclick="return confirm('¿Detener UDPGW?')"><i class="bi bi-stop-fill"></i> Detener</a>
+                        <a href="/control_service/udpgw/start" class="btn btn-sm btn-outline-success flex-fill" onclick="return confirm('¿Iniciar UDPGW?')"><i class="bi bi-play-fill"></i></a>
+                        <a href="/control_service/udpgw/stop" class="btn btn-sm btn-outline-warning flex-fill" onclick="return confirm('¿Detener UDPGW?')"><i class="bi bi-stop-fill"></i></a>
                         <a href="/control_service/udpgw/restart" class="btn btn-sm btn-outline-info flex-fill" onclick="return confirm('¿Reiniciar UDPGW?')"><i class="bi bi-arrow-clockwise"></i></a>
                     </div>
                 </div></div>
@@ -884,7 +950,7 @@
                             <span class="badge bg-secondary ms-1">{{ stats.users }}</span>
                         </h5>
                         <button type="button" class="btn btn-add-user" data-bs-toggle="modal" data-bs-target="#addUserModal">
-                            <i class="bi bi-person-plus-fill me-1"></i> Agregar Usuario
+                            <i class="bi bi-person-plus-fill me-1"></i> Crear Usuario
                         </button>
                     </div>
                     <div class="table-responsive">
@@ -924,10 +990,10 @@
         <div class="container">
             <p class="mb-1">
                 <i class="bi bi-hexagon-fill text-success"></i>
-                <strong>Hex Manager</strong> v{{ stats.update_info.local_version }}
+                <strong>Manager</strong> v{{ stats.update_info.local_version }}
             </p>
             <p class="mb-0">
-                &copy; 2026 <a href="https://github.com/rogellevi/HCR_BHTTP" target="_blank">rogellevi</a> · Todos los derechos reservados
+                &copy;<a href="" target="_blank">  2026</a> · Todos los derechos reservados
             </p>
         </div>
     </footer>
@@ -937,7 +1003,7 @@
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title"><i class="bi bi-person-plus-fill"></i> Crear Nuevo Usuario</h5>
+                    <h5 class="modal-title"><i class="bi bi-person-plus-fill"></i> Nuevo Usuario</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <form action="/add_user" method="POST">
@@ -959,7 +1025,7 @@
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal"><i class="bi bi-x-circle"></i> Cancelar</button>
-                        <button type="submit" class="btn btn-success"><i class="bi bi-check-circle-fill"></i> Crear Usuario</button>
+                        <button type="submit" class="btn btn-success"><i class="bi bi-check-circle-fill"></i> Crear</button>
                     </div>
                 </form>
             </div>
@@ -997,7 +1063,7 @@
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal"><i class="bi bi-x-circle"></i> Cancelar</button>
                         <button type="submit" class="btn btn-success" id="btnSubmitPassword">
-                            <i class="bi bi-check-circle-fill"></i> Cambiar Contraseña
+                            <i class="bi bi-check-circle-fill"></i> Guardar
                         </button>
                     </div>
                 </form>
@@ -1247,7 +1313,7 @@
                 <div class="update-steps">
                     <div class="update-step" id="step-menu">
                         <div class="update-step-icon"><i class="bi bi-list"></i></div>
-                        <div class="update-step-text">Actualizando menú HEX</div>
+                        <div class="update-step-text">Actualizando menú</div>
                         <div class="update-step-status">Pendiente</div>
                     </div>
                     <div class="update-step" id="step-templates">
@@ -1360,7 +1426,7 @@
         //  TOAST INICIAL DE BIENVENIDA
         // ═══════════════════════════════════════════════════════════
         setTimeout(() => {
-            showToast('info', '¡Bienvenido!', 'Hex Manager v{{ stats.update_info.local_version }}');
+            showToast('info', '¡Bienvenido!', 'Manager v{{ stats.update_info.local_version }}');
         }, 500);
     </script>
 </body>
